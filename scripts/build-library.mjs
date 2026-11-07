@@ -11,8 +11,8 @@ const post = async (body) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = await r.json();
-  if (!r.ok) throw Object.assign(new Error(json.error || `HTTP ${r.status}`), { status: r.status });
+  const json = await r.json().catch(() => ({ error: `non-JSON response (HTTP ${r.status})` }));
+  if (!r.ok || json.error) throw Object.assign(new Error(json.error || `HTTP ${r.status}`), { status: r.ok ? 502 : Math.max(r.status, 500) });
   return json;
 };
 if (args.includes("--discover")) console.log("discovered", await post({ action: "discover" }));
