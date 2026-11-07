@@ -23,6 +23,8 @@ import { SiteHeader } from "./app-frame";
 import { WinsChart } from "./audit-charts";
 import { RECORD_LABELS } from "@/lib/analysis";
 import { DISCLAIMER } from "./integrity-panel";
+import PlainReportView from "./plain-report";
+import { walletPlainReport } from "@/lib/plain-report";
 import { EDGE_LABELS, TIER_LABELS } from "@/lib/integrity/wallet-spec";
 import {
   csv,
@@ -370,7 +372,7 @@ export default function WalletInvestigation({
                     ? "Positions & trades"
                     : value === "record"
                       ? "Record test"
-                      : "Investigation report"}
+                      : "Report"}
                   {value === "trades" ? (
                     <span>{bundle.positions.length}</span>
                   ) : null}
@@ -804,6 +806,19 @@ export default function WalletInvestigation({
             ) : null}
             {tab === "report" ? (
               <>
+                <PlainReportView
+                  report={walletPlainReport({
+                    address,
+                    name,
+                    card: data.library?.card ?? null,
+                    tested: data.library?.tested ?? 0,
+                    empiricalFdr: data.library?.empiricalFdr ?? null,
+                    audit,
+                  })}
+                  generatedAt={data.report.generatedAt}
+                />
+                {/* Optional: an AI rewording, only when local Ollama is running. */}
+                {data.aiConfigured ? (
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
@@ -864,24 +879,7 @@ export default function WalletInvestigation({
                     ))}
                   </div>
                 </section>
-                <div className="analysis-grid">
-                  <section className="panel">
-                    <h2>Alternative explanations</h2>
-                    <ul className="limitations-list">
-                      {data.report.alternatives.map((text) => (
-                        <li key={text}>{text}</li>
-                      ))}
-                    </ul>
-                  </section>
-                  <section className="panel">
-                    <h2>Limitations</h2>
-                    <ul className="limitations-list">
-                      {data.report.limitations.map((text) => (
-                        <li key={text}>{text}</li>
-                      ))}
-                    </ul>
-                  </section>
-                </div>
+                ) : null}
               </>
             ) : null}
             <footer className="page-footer">

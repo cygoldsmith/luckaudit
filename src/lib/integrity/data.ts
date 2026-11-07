@@ -853,6 +853,38 @@ async function reportInputs(condition: string) {
   };
 }
 
+/** Participation p-values for every library market in a category (cached per population). */
+const categoryPCache = new WeakMap<Population, Map<string, Map<string, number>>>();
+function categoryPValues(pop: Population, category: string) {
+  let byCat = categoryPCache.get(pop);
+  if (!byCat) categoryPCache.set(pop, (byCat = new Map()));
+  let ps = byCat.get(category);
+  if (!ps) {
+    ps = new Map();
+    for (const r of pop.markets.values()) {
+      if ((r.category ?? "uncategorized") !== category) continue;
+      const p = participation(pop, r.participants, r.participantVolume, r.event, r.category, r.condition, r.examined).p;
+      if (p !== null) ps.set(r.condition, p);
+    }
+    byCat.set(category, ps);
+  }
+  return ps;
+}
+
+/**
+ * This market's result when every library market in its category is checked
+ * together (Benjamini–Hochberg): does it still stand out?
+ */
+function categoryCheck(pop: Population, category: string | null, condition: string, p: number | null) {
+  if (p === null || !category) return null;
+  const others = categoryPValues(pop, category);
+  const entries = [...others].filter(([c]) => c !== condition).map(([, v]) => v);
+  entries.push(p);
+  const bh = benjaminiHochberg(entries);
+  const i = entries.length - 1;
+  return { markets: entries.length, q: bh.q[i], flagged: bh.rejected[i] };
+}
+
 export async function integrityReport(condition: string) {
   const input = await reportInputs(condition),
     m = { meta: input.meta, coverage: input.coverage },
@@ -866,6 +898,7 @@ export async function integrityReport(condition: string) {
   const categoryCalibration = m.meta.category ? check?.randomTime.categories[m.meta.category] : undefined;
   return {
     method: WALLET_METHOD_ID,
+    categoryCheck: categoryCheck(pop, m.meta.category, m.meta.condition, part.p),
     contextMethod: METHOD_ID,
     generatedAt: new Date().toISOString(),
     market: {

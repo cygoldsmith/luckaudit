@@ -19,6 +19,7 @@ import {
 import AppFrame from "./app-frame";
 import PriceTimeline from "./price-timeline";
 import IntegrityPanel from "./integrity-panel";
+import { MarketReportTab } from "./plain-report";
 import { RECORD_LABELS } from "@/lib/analysis";
 import { download, requestJson } from "@/lib/client";
 import {
@@ -340,7 +341,7 @@ export default function MarketInvestigation({
                         ? "Activity & timing"
                         : value === "traders"
                           ? "Participating traders"
-                          : "Evidence report"}
+                          : "Report"}
                     {value === "traders" ? (
                       <span>{audit.participants.length}</span>
                     ) : null}
@@ -790,6 +791,9 @@ export default function MarketInvestigation({
             ) : null}
             {tab === "report" ? (
               <>
+                <MarketReportTab condition={condition} />
+                {/* Optional: an AI rewording, only when local Ollama is running. */}
+                {data.aiConfigured ? (
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
@@ -850,24 +854,7 @@ export default function MarketInvestigation({
                     ))}
                   </div>
                 </section>
-                <div className="analysis-grid">
-                  <section className="panel">
-                    <h2>Alternative explanations</h2>
-                    <ul className="limitations-list">
-                      {data.report.alternatives.map((t) => (
-                        <li key={t}>{t}</li>
-                      ))}
-                    </ul>
-                  </section>
-                  <section className="panel">
-                    <h2>Limits of this scan</h2>
-                    <ul className="limitations-list">
-                      {data.report.limitations.map((t) => (
-                        <li key={t}>{t}</li>
-                      ))}
-                    </ul>
-                  </section>
-                </div>
+                ) : null}
               </>
             ) : null}
             <footer className="page-footer">
