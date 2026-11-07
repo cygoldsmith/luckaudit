@@ -74,9 +74,3 @@ Tests: `npm test` and `npm run typecheck`.
 - Markets where the information arrived gradually have no sudden move, so they can't be tested.
 - One person using many wallets looks like many small traders.
 - Results apply only to resolved markets and the library this tool built.
-
-## AI use disclosure
-
-- **Coding assistant:** Claude Code (Anthropic) was used to help implement the statistical method, the data pipeline, the user interface and the tests.
-- **Our own work:** the team designed the method in our "Market Integrity Search — Method" document, including the nine settings, the placebo tests and the responsible-use rules. We can explain how every part works.
-- **AI inside the app:** a local Gemma model through Ollama writes optional explanations of computed results. It never decides a verdict.
