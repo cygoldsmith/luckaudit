@@ -109,7 +109,7 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
             </dd>
           </div>
           <div>
-            <dt>Expected from population rate</dt>
+            <dt>Expected from {part.rateBasis === "population" ? "population" : "category"} rate</dt>
             <dd>{part.expected.toFixed(1)}</dd>
           </div>
           <div>

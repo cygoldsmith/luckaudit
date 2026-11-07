@@ -166,6 +166,11 @@ export const CHANGE_LOG = [
     change: "Added crypto-price markets as the control category.",
     reason: "Required by the Advanced spec's negative control.",
   },
+  {
+    at: "2026-11-07T23:00:00Z",
+    change: "Market verdict compares a market's flagged share with the rate in other library markets of the same category, not the pooled population rate.",
+    reason: "The negative control showed flagged wallets cluster in crypto-price markets (skill and speed), so a pooled rate marked whole categories as elevated. The wallet tests themselves are unchanged.",
+  },
 ];
 
 export type ScoreType = "aggressor-flow" | "price-drift";

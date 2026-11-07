@@ -166,7 +166,7 @@ function MultiSearch() {
                 participation
               </h2>
               <p>
-                Population rate {pct(result.baseRate, 2)} of tested wallets flagged. BH bar for the last flagged rank:{" "}
+                Each market is compared with the flagged rate in other library markets of its category (population rate {pct(result.baseRate, 2)}). BH bar for the last flagged rank:{" "}
                 {fmtP(result.threshold)}. Measured false-flag rate{" "}
                 {result.empiricalFdr === null ? "not yet measured" : pct(result.empiricalFdr, 1)}. Sorted by q-value.
               </p>

@@ -11,6 +11,7 @@ import {
   dropFirstHour,
   marketTest,
   randomTimePlacebo,
+  scoreAtHour,
   type Fill,
   type HourlySeries,
   type LibraryMarket,
@@ -368,9 +369,9 @@ const indexFile = () => path.join(root, "library-index-v2.json");
 
 export async function libraryStatus() {
   const index = (await readJson<LibraryIndex>(indexFile())) ?? { discoveredAt: null, candidates: [], failed: {} };
-  const records = await readLibrary();
+  const markets = [...(await walletPopulation()).markets.values()];
   const byCategory: Record<string, { markets: number; testable: number }> = {};
-  for (const r of records) {
+  for (const r of markets) {
     const c = r.category ?? "uncategorized";
     byCategory[c] ||= { markets: 0, testable: 0 };
     byCategory[c].markets++;
@@ -379,9 +380,9 @@ export async function libraryStatus() {
   return {
     discoveredAt: index.discoveredAt,
     candidates: index.candidates.length,
-    built: records.length,
+    built: markets.length,
     failed: Object.keys(index.failed).length,
-    bets: records.reduce((s, r) => s + r.spec.positions.length, 0),
+    bets: markets.reduce((s, r) => s + r.positions, 0),
     byCategory,
   };
 }
@@ -502,21 +503,108 @@ export async function buildLibraryStep(count = 3) {
 
 /* ------------------------------------------------- wallet population */
 
+/** What the server keeps per library market after the population is computed. */
+export interface SlimMarket {
+  condition: string;
+  event: string;
+  title: string;
+  category: CategoryId | null;
+  closedTime: string | null;
+  test: MarketTest;
+  participants: { wallet: string; usd: number }[];
+  /** Participants examined (the stored list may keep only wallets with a card). */
+  examined: number;
+  participantVolume: number;
+  positions: number;
+}
+
 export interface Population {
   records: number;
+  markets: Map<string, SlimMarket>;
   curve: CalibrationBin[];
   index: Map<string, SpecBet[]>;
   result: PopulationResult;
   placeboA: ReturnType<typeof placeboA>;
+  /**
+   * Flagged / tested participants pooled over library markets of each category,
+   * plus each library market's own contribution (left out when it is checked).
+   */
+  categoryRates: {
+    byCategory: Record<string, { tested: number; flagged: number }>;
+    byMarket: Map<string, { category: string; tested: number; flagged: number }>;
+  };
 }
 
 let populationCache: { records: number; at: number; value: Population } | null = null;
 
 /** The Advanced spec pipeline over every wallet in the library (Steps 3–7 + Placebo A). */
+const populationFile = () => path.join(root, "population-v2.json.gz");
+
+type PopulationSnapshot = {
+  records: number;
+  markets: SlimMarket[];
+  curve: CalibrationBin[];
+  index: [string, SpecBet[]][];
+  result: Omit<PopulationResult, "wallets"> & { wallets: WalletResult[] };
+  placeboA: Population["placeboA"];
+  categoryRates: { byCategory: Population["categoryRates"]["byCategory"]; byMarket: [string, { category: string; tested: number; flagged: number }][] };
+};
+
+/**
+ * Only what verdicts need: bets for tier 1-2 wallets (re-scored without the
+ * checked market) and, per market, the participants that have a wallet card.
+ */
+function toSnapshot(p: Population): PopulationSnapshot {
+  const flagged = (w: string) => {
+    const t = p.result.wallets.get(w)?.tier;
+    return t === 1 || t === 2;
+  };
+  return {
+    records: p.records,
+    markets: [...p.markets.values()].map((m) => ({ ...m, participants: m.participants.filter((x) => p.result.wallets.has(x.wallet)) })),
+    curve: p.curve,
+    index: [...p.index].filter(([w]) => flagged(w)),
+    result: { ...p.result, wallets: [...p.result.wallets.values()] },
+    placeboA: p.placeboA,
+    categoryRates: { byCategory: p.categoryRates.byCategory, byMarket: [...p.categoryRates.byMarket] },
+  };
+}
+
+function fromSnapshot(s: PopulationSnapshot): Population {
+  return {
+    records: s.records,
+    markets: new Map(s.markets.map((m) => [m.condition, m])),
+    curve: s.curve,
+    index: new Map(s.index),
+    // JSON turns an infinite odds multiplier ("all n won") into null.
+    result: { ...s.result, wallets: new Map(s.result.wallets.map((w) => [w.wallet, { ...w, odds: w.odds === null && w.O === w.n ? Infinity : w.odds }])) },
+    placeboA: s.placeboA,
+    categoryRates: { byCategory: s.categoryRates.byCategory, byMarket: new Map(s.categoryRates.byMarket) },
+  };
+}
+
+/**
+ * The population, from (1) memory, (2) the saved snapshot if it matches the
+ * library, or (3) a full recompute that then refreshes the snapshot. The
+ * standalone build writes the snapshot, so the app server never has to load
+ * every full record.
+ */
 export async function walletPopulation(): Promise<Population> {
+  const count = (await libraryFiles()).length;
+  if (populationCache && populationCache.records === count) return populationCache.value;
+  const saved = await readJson<PopulationSnapshot>(populationFile());
+  if (saved && saved.records === count) {
+    const value = fromSnapshot(saved);
+    populationCache = { records: count, at: Date.now(), value };
+    return value;
+  }
+  const value = await computePopulation();
+  await writeJson(populationFile(), toSnapshot(value));
+  return value;
+}
+
+async function computePopulation(): Promise<Population> {
   const records = await readLibrary();
-  if (populationCache && populationCache.records === records.length && Date.now() - populationCache.at < 10 * 60_000)
-    return populationCache.value;
   const markets = records.map((r) => r.spec),
     curve = calibrationCurve(markets),
     index = indexByWallet(collapseBets(markets, curve));
@@ -524,8 +612,43 @@ export async function walletPopulation(): Promise<Population> {
   // Placebo A decides the primary rule: BY if the measured FDR exceeds 10%.
   const a = placeboA(index, result.family1.flagged);
   if (a.primary === "BY") result = analyzePopulation(index, "BY");
-  const value = { records: records.length, curve, index, result, placeboA: a };
+  const slim = new Map<string, SlimMarket>(
+    records.map((r) => [
+      r.condition,
+      {
+        condition: r.condition,
+        event: r.event,
+        title: r.title,
+        category: r.category,
+        closedTime: r.closedTime,
+        test: r.test,
+        participants: r.participants,
+        examined: r.participants.length,
+        participantVolume: r.participantVolume,
+        positions: r.spec.positions.length,
+      },
+    ]),
+  );
+  const partial = { records: records.length, markets: slim, curve, index, result, placeboA: a };
+  const byCategory: Population["categoryRates"]["byCategory"] = {},
+    byMarket: Population["categoryRates"]["byMarket"] = new Map();
+  for (const r of records) {
+    const cat = r.category ?? "uncategorized";
+    let tested = 0,
+      flagged = 0;
+    for (const { wallet } of r.participants) {
+      const c = classify(partial, wallet, r.event);
+      if (c.tested) tested++;
+      if (c.flagged) flagged++;
+    }
+    byCategory[cat] ||= { tested: 0, flagged: 0 };
+    byCategory[cat].tested += tested;
+    byCategory[cat].flagged += flagged;
+    byMarket.set(r.condition, { category: cat, tested, flagged });
+  }
+  const value: Population = { ...partial, categoryRates: { byCategory, byMarket } };
   populationCache = { records: records.length, at: Date.now(), value };
+  libraryCache = null; // full records (positions, series) are no longer needed in memory
   return value;
 }
 
@@ -552,9 +675,10 @@ export async function walletCard(address: string) {
 
 export async function methodCheck(refresh = false) {
   const file = path.join(root, "method-check-v2.json"),
-    records = await readLibrary();
+    count = (await libraryFiles()).length;
   const cached = await readJson<Awaited<ReturnType<typeof computeMethodCheck>> & { libraryMarkets: number }>(file);
-  if (!refresh && cached && cached.libraryMarkets === records.length) return cached;
+  if (!refresh && cached && cached.libraryMarkets === count) return cached;
+  const records = await readLibrary();
   const result = { ...(await computeMethodCheck(records)), libraryMarkets: records.length };
   await writeJson(file, result);
   return result;
@@ -574,6 +698,7 @@ async function computeMethodCheck(records: LibraryRecord[]) {
       family2: pop.result.family2,
       primary: pop.result.primary,
       baseRate: pop.result.baseRate,
+      categoryRates: pop.categoryRates.byCategory,
       tiers: ([1, 2, 3] as Tier[]).map((t) => ({
         tier: t,
         count: [...pop.result.wallets.values()].filter((w) => w.tier === t).length,
@@ -602,65 +727,141 @@ export interface ParticipantRow {
   weak: boolean;
 }
 
+/**
+ * One participant in one market: tested if it has a Test 1 record; flagged if
+ * tier 1-2 and the record still clears the main run's bar without this market's
+ * event (same rule as LOEO), so a wallet is never flagged by the market itself.
+ */
+function classify(pop: Pick<Population, "result" | "index">, wallet: string, event: string) {
+  const card = pop.result.wallets.get(wallet) ?? null;
+  if (!card?.tested1) return { card, tested: false, flagged: false, pExcluding: null as number | null };
+  let pExcluding: number | null = null,
+    flagged = false;
+  if (card.tier === 1 || card.tier === 2) {
+    const bets = (pop.index.get(wallet) ?? []).filter((b) => b.event !== event);
+    pExcluding = bets.length ? recordP(bets) : null;
+    flagged = pExcluding !== null && pop.result.family1.cutoff > 0 && pExcluding <= pop.result.family1.cutoff + 1e-300;
+  }
+  return { card, tested: true, flagged, pExcluding };
+}
+
+/**
+ * The comparison rate for a market: flagged / tested participants across the
+ * other library markets of the same category. Skilled high-frequency traders
+ * cluster in some categories (the crypto control most of all), so a pooled rate
+ * would mark whole categories as "elevated"; this asks whether a market has more
+ * anomalous wallets than usual for its kind of market.
+ */
+function categoryRate(pop: Population, category: string | null, condition: string) {
+  const cat = category ?? "uncategorized",
+    total = pop.categoryRates.byCategory[cat],
+    own = pop.categoryRates.byMarket.get(condition),
+    mine = own && own.category === cat;
+  const tested = (total?.tested ?? 0) - (mine ? own.tested : 0),
+    flagged = (total?.flagged ?? 0) - (mine ? own.flagged : 0);
+  return tested >= 50
+    ? { rate: flagged / tested, basis: cat, tested }
+    : { rate: pop.result.baseRate, basis: "population", tested: pop.result.tested };
+}
+
 /** Look up a market's participants in the population and count flagged wallets. */
 function participation(
   pop: Population,
   people: { wallet: string; usd: number }[],
   totalUsd: number,
   event: string,
+  category: string | null,
+  condition: string,
+  examined?: number,
 ) {
   const rows: ParticipantRow[] = people.map(({ wallet, usd }) => {
-    const card = pop.result.wallets.get(wallet) ?? null;
-    let pExcluding: number | null = null,
-      flagged = false;
-    if (card?.tested1) {
-      const bets = (pop.index.get(wallet) ?? []).filter((b) => b.event !== event);
-      pExcluding = bets.length ? recordP(bets) : null;
-      // Same rule as LOEO: the record must still clear the main run's cutoff
-      // without this market's event, so a wallet is never flagged by this market itself.
-      flagged =
-        (card.tier === 1 || card.tier === 2) &&
-        pExcluding !== null &&
-        pop.result.family1.cutoff > 0 &&
-        pExcluding <= pop.result.family1.cutoff + 1e-300;
-    }
+    const c = classify(pop, wallet, event);
     return {
       wallet,
       usd,
       share: totalUsd ? usd / totalUsd : 0,
-      card,
-      pExcluding,
-      flagged,
-      weak: !flagged && !!card && card.tier !== 0,
+      card: c.card,
+      pExcluding: c.pExcluding,
+      flagged: c.flagged,
+      weak: !c.flagged && !!c.card && c.card.tier !== 0,
     };
   });
   const tested = rows.filter((r) => r.card?.tested1),
-    flagged = rows.filter((r) => r.flagged);
-  const test = participationTest(tested.length, flagged.length, pop.result.baseRate);
+    flagged = rows.filter((r) => r.flagged),
+    rate = categoryRate(pop, category, condition);
+  const test = participationTest(tested.length, flagged.length, rate.rate);
   return {
     rows,
-    examined: rows.length,
+    examined: examined ?? rows.length,
     inPopulation: rows.filter((r) => r.card).length,
     tested: tested.length,
     flagged: flagged.length,
     weak: rows.filter((r) => r.weak).length,
     flaggedVolumeShare: flagged.reduce((s, r) => s + r.share, 0),
-    baseRate: pop.result.baseRate,
+    baseRate: rate.rate,
+    rateBasis: rate.basis,
+    rateTested: rate.tested,
     expected: test.expected,
     p: test.p,
     verdict: test.verdict as ParticipationVerdict,
   };
 }
 
+let indexCache: { at: number; byCondition: Map<string, LibraryIndex["candidates"][number]> } | null = null;
+async function libraryMeta(condition: string) {
+  if (!indexCache || Date.now() - indexCache.at > 10 * 60_000) {
+    const index = await readJson<LibraryIndex>(indexFile());
+    indexCache = { at: Date.now(), byCondition: new Map((index?.candidates ?? []).map((c) => [c.condition, c])) };
+  }
+  return indexCache.byCondition.get(condition) ?? null;
+}
+
+/**
+ * Library markets are reported from their stored record (participants, series
+ * and pre-move test), so they load instantly and need no live Polymarket fetch.
+ * Other markets, including live ones, are fetched.
+ */
+async function reportInputs(condition: string) {
+  condition = condition.toLowerCase();
+  const record = /^0x[\da-f]{64}$/.test(condition)
+      ? await readJson<LibraryRecord>(path.join(libDir, `${condition}.json.gz`))
+      : null,
+    meta = record && record.method === RECORD_VERSION ? await libraryMeta(condition) : null;
+  if (record && meta) {
+    let test = record.test;
+    if (record.series && test.move && test.verdict !== "not-testable") {
+      const r = scoreAtHour(record.series, test.move.hour, test.move.favored, test.scoreType);
+      if (r) test = { ...test, comparisonScores: r.comparisonScores };
+    }
+    return {
+      meta,
+      test,
+      series: record.series,
+      people: { wallets: record.participants, total: record.participantVolume },
+      coverage: { takerComplete: true, allSidesComplete: record.spec.positions.length > 0, warnings: record.warnings },
+      source: "library" as const,
+    };
+  }
+  const m = await loadMarket(condition);
+  return {
+    meta: m.meta,
+    test: analyze(m).test,
+    series: m.series,
+    people: participants(m.allSides),
+    coverage: m.coverage,
+    source: "live" as const,
+  };
+}
+
 export async function integrityReport(condition: string) {
-  const m = await loadMarket(condition),
-    { test } = analyze(m),
+  const input = await reportInputs(condition),
+    m = { meta: input.meta, coverage: input.coverage },
+    test = input.test,
     pop = await walletPopulation(),
-    records = await readLibrary(),
-    check = records.length ? await methodCheck() : null,
-    people = participants(m.allSides);
-  const part = participation(pop, people.wallets, people.total, m.meta.event);
-  const s = m.series;
+    check = pop.records ? await methodCheck() : null,
+    people = input.people;
+  const part = participation(pop, people.wallets, people.total, m.meta.event, m.meta.category, m.meta.condition);
+  const s = input.series;
   const chart = s ? { firstHour: s.firstHour, yes: s.yes, moveHour: test.move ? test.move.hour : null } : null;
   const categoryCalibration = m.meta.category ? check?.randomTime.categories[m.meta.category] : undefined;
   return {
@@ -693,6 +894,7 @@ export async function integrityReport(condition: string) {
     categoryFalseAlarmRate: categoryCalibration?.rate ?? null,
     chart,
     coverage: m.coverage,
+    source: input.source,
     headline: headline(part, pop),
   };
 }
@@ -702,7 +904,7 @@ function headline(part: ReturnType<typeof participation>, pop: Population) {
   const parts = [
     part.verdict === "not-testable"
       ? `Only ${part.tested} of the ${part.examined} largest participants have testable records (at least ${WALLET_SETTINGS.market.minTestedParticipants} needed).`
-      : `${part.flagged} of ${part.tested} tested participants have anomalous records elsewhere, against ${part.expected.toFixed(1)} expected from the population rate (p = ${part.p!.toPrecision(2)}).`,
+      : `${part.flagged} of ${part.tested} tested participants have anomalous records elsewhere, against ${part.expected.toFixed(1)} expected from the ${part.rateBasis === "population" ? "population" : "category"} rate (p = ${part.p!.toPrecision(2)}).`,
   ];
   if (part.flagged) parts.push(`They traded ${(part.flaggedVolumeShare * 100).toFixed(1)}% of the market's volume.`);
   if (fdr !== null) parts.push(`Measured false-flag rate ${(fdr * 100).toFixed(1)}%.`);
@@ -713,15 +915,15 @@ function headline(part: ReturnType<typeof participation>, pop: Population) {
 /* --------------------------------------------------------- multi-market */
 
 export async function multiReport(input: { conditions?: string[]; category?: CategoryId; from?: string; to?: string }) {
-  const library = await readLibrary(),
-    pop = await walletPopulation();
-  type Target = { condition: string; title: string; event: string; category: CategoryId | null; test: MarketTest; people: { wallet: string; usd: number }[]; total: number };
+  const pop = await walletPopulation(),
+    library = [...pop.markets.values()];
+  type Target = { condition: string; title: string; event: string; category: CategoryId | null; test: MarketTest; people: { wallet: string; usd: number }[]; total: number; examined?: number };
   let targets: Target[] = [];
   if (input.conditions?.length) {
     for (const c of input.conditions.map((x) => x.toLowerCase())) {
       const rec = library.find((r) => r.condition === c);
       if (rec) {
-        targets.push({ condition: c, title: rec.title, event: rec.event, category: rec.category, test: rec.test, people: rec.participants, total: rec.participantVolume });
+        targets.push({ condition: c, title: rec.title, event: rec.event, category: rec.category, test: rec.test, people: rec.participants, total: rec.participantVolume, examined: rec.examined });
         continue;
       }
       const m = await loadMarket(c),
@@ -737,10 +939,10 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
         const t = parseTime(r.closedTime) ?? 0;
         return t >= from && t < to;
       })
-      .map((r) => ({ condition: r.condition, title: r.title, event: r.event, category: r.category, test: r.test, people: r.participants, total: r.participantVolume }));
+      .map((r) => ({ condition: r.condition, title: r.title, event: r.event, category: r.category, test: r.test, people: r.participants, total: r.participantVolume, examined: r.examined }));
   }
   if (!targets.length) throw new DataError("No markets matched this search.", 404);
-  const rows = targets.map((t) => ({ t, part: participation(pop, t.people, t.total, t.event) }));
+  const rows = targets.map((t) => ({ t, part: participation(pop, t.people, t.total, t.event, t.category, t.condition, t.examined) }));
   // BH across the testable markets' participation p-values.
   const testable = rows.filter((r) => r.part.p !== null),
     bh = benjaminiHochberg(testable.map((r) => r.part.p!));
@@ -753,6 +955,7 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
     threshold: bh.threshold,
     baseRate: pop.result.baseRate,
     empiricalFdr: pop.placeboA.fdr,
+    categoryRates: pop.categoryRates.byCategory,
     rows: rows
       .map(({ t, part }) => {
         const corrected = q.get(t.condition);

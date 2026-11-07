@@ -10,6 +10,7 @@ import {
   libraryTodo,
   methodCheck,
   recordLibraryFailures,
+  walletPopulation,
 } from "../src/lib/integrity/data.ts";
 
 const args = process.argv.slice(2);
@@ -75,7 +76,9 @@ async function worker(id: number) {
 
 await Promise.all(Array.from({ length: workers }, (_, i) => worker(i + 1)));
 await flushFailures();
-console.log(new Date().toISOString(), `library complete: ${built} built, ${failedCount} failed; computing validation…`);
+console.log(new Date().toISOString(), `library complete: ${built} built, ${failedCount} failed; computing population and validation…`);
+// Writes the compact population snapshot the app server loads.
+await walletPopulation();
 const check = await methodCheck(true);
 console.log(
   "validation",
