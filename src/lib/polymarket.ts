@@ -304,7 +304,7 @@ export async function getLeaderboard(options: {
             time_period: options.period,
             category: options.category,
             sort_by: options.order,
-            limit: "50",
+            limit: "200",
             ...(options.cursor ? { cursor: options.cursor } : {}),
           },
           z.object({
