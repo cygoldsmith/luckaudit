@@ -1,6 +1,6 @@
 import { getWallet, DataError } from "@/lib/polymarket";
 import { auditWallet } from "@/lib/analysis";
-import { libraryCalibration } from "@/lib/integrity/data";
+import { libraryQ } from "@/lib/integrity/data";
 import { aiConfigured, aiReport } from "@/lib/report";
 import { apiError, assertSameOrigin, readBody } from "@/lib/http";
 import { z } from "zod";
@@ -39,7 +39,7 @@ export async function POST(
         {
           report: await aiReport(
             bundle,
-            auditWallet(bundle, await libraryCalibration()),
+            auditWallet(bundle, await libraryQ()),
           ),
         },
         { headers: { "Cache-Control": "no-store" } },

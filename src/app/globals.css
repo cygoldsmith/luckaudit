@@ -4878,3 +4878,47 @@ main {
     grid-template-columns: 40px minmax(0, 1fr) auto;
   }
 }
+
+/* Wallet-method verdicts and tiers */
+.integrity-verdict.verdict-elevated {
+  border-left-color: #b4572e;
+}
+.integrity-verdict.verdict-typical {
+  border-left-color: var(--yes);
+}
+.integrity-label.verdict-elevated {
+  background: #fff3e8;
+  color: #b4572e;
+  border-color: transparent;
+}
+.integrity-label.verdict-typical {
+  background: var(--yes-bg);
+  color: var(--yes);
+  border-color: transparent;
+}
+.integrity-label.tier-1,
+.integrity-label.tier-2 {
+  background: #fff3e8;
+  color: #b4572e;
+  border-color: transparent;
+}
+.integrity-label.tier-3 {
+  background: #fdf7e3;
+  color: #8a6d14;
+  border-color: transparent;
+}
+.records-table tr.row-flagged td {
+  background: #fffaf5;
+}
+.integrity-chart .cal-dot {
+  fill: var(--accent);
+  opacity: 0.85;
+}
+.integrity-chart .cal-dot.thin {
+  fill: var(--muted);
+  opacity: 0.5;
+}
+.market-rules h3 {
+  font-size: 14px;
+  margin: 12px 0 4px;
+}

@@ -1,31 +1,34 @@
 # LuckAudit
 
-**Was the trading right before the news unusual?**
+**Which wallets keep winning in ways luck can't explain, and which markets do they trade in?**
 
-Pick any resolved Polymarket market. LuckAudit checks whether buying in the 6 hours before the market's big price move was unusually one-sided toward the side that then won. It also checks whether the wallets doing that buying have winning records elsewhere that are hard to explain by luck. Every answer comes with a measured error rate.
+LuckAudit audits Polymarket wallets. A wallet is flagged only when its record on resolved bets is too good to be luck under calibrated market odds, at a 5% false discovery rate. Pick any market, and LuckAudit checks its participating wallets against that population. It then reports whether unusually many of them have anomalous records. Every result comes with a measured false-flag rate.
 
 Built at **HackBU 2026 – NYCAIRR**, track: **Markets & Networks** (transparency and fairness in financial and information systems).
 
 ## What it does
 
-Every market report has three parts:
+1. **Wallet audit.** Every wallet in a 180-day library of resolved markets gets:
+   - **Test 1:** an exact Poisson-binomial test of its wins against calibrated odds.
+   - **Test 2:** a timing test of how often it entered just before price jumps.
+   - **Robustness:** a leave-one-event-out check and a tier (strong anomaly, anomaly, or weak).
+2. **Market verdict.** A market's top wallets by volume are looked up in that population. Each flagged wallet is re-tested without this market, so no wallet is flagged because of the market being checked. The count of flagged wallets is then compared with the population rate.
+   - **Elevated participation by anomalous wallets**, or
+   - **Typical participation**, or
+   - **Not enough testable wallets**.
+3. **Several markets at once.** Benjamini–Hochberg across the markets stops extra searches from creating false alarms.
 
-1. **Market test.** Compares the 6 hours before the big move with every earlier 6-hour window in the same market and gives a p-value.
-2. **Wallet check.** For the 20 wallets that backed the winning side hardest before the move, it asks whether each one has a record in other markets that luck alone would rarely produce, using an exact Poisson-binomial test.
-3. **Comparison.** Shows how this market ranks against similar markets in a reference library, as a percentile.
-
-Each market gets one of three verdicts: **Unusual pre-move buying**, **Nothing unusual detected**, or **Not testable**.
-
-You can also search **several markets at once**. The tool then applies a Benjamini–Hochberg correction so that extra searches don't create false alarms.
+Paste a polymarket.com link or condition ID into the search bar. A polymarket.us link (the separate US exchange, whose trades are not public) is matched to the same event on the main exchange.
 
 ## Responsible AI and fair use
 
 The event's theme is AI responsibility. These rules are built into the tool:
 
 - **An anomaly, not an accusation.** The words "insider," "cheater," "rigged" and "fair" never appear as labels. "Nothing unusual" is not proof a market was clean.
-- **Measured error rates.** Two placebo tests, one with fake news times and one with fake wallets, measure how often the tool raises false alarms. That rate is shown next to every verdict.
-- **Settings fixed in advance.** The nine method settings in `src/lib/integrity/settings.ts` were written down before running on real markets, so they couldn't be tuned to produce dramatic verdicts. The only later changes were the library's $10k volume floor and its size. Both changed which markets enter the library, never how a market is tested, and both are recorded in the commit history.
-- **Resolved markets only.** Live markets are never labeled.
+- **Verdicts from wallets, not prices.** A market is never labeled from its own price moves; the verdict counts participants whose records elsewhere are anomalous.
+- **Measured error rates.** A matched-twin placebo measures how often random wallets would be flagged; it is shown next to every verdict, with a positive control showing what the audit misses.
+- **Parameters fixed in advance.** The wallet method's parameters in `src/lib/integrity/settings.ts` are the Advanced spec's defaults (written Nov 6), unchanged. Every later change is listed in `CHANGE_LOG` with its reason.
+- **Records from resolved markets only.** Wallet records use only resolved bets; a market's own trades never flag a wallet.
 - **Privacy.** Wallets are shown as shortened addresses, with no attempt to link them to people.
 - **Local AI only.** Optional plain-English explanations run on a local model through Ollama. No data is sent to an outside AI service, and the AI can only cite evidence the statistics computed.
 
@@ -33,14 +36,15 @@ The event's theme is AI responsibility. These rules are built into the tool:
 
 | Step | What happens |
 | --- | --- |
-| Find the big move | The largest one-hour price change of 10+ points that lasts, and that no single wallet caused (no wallet made more than 25% of that hour's dollars) |
-| Score one-sidedness | Aggressive buying of the favored side minus the reverse, cushioned by the market's typical volume |
-| Market p-value | (1 + earlier windows scoring at least as high) ÷ (1 + earlier windows) |
-| Wallet records | Bets of $10+ at 3¢–50¢ held to resolution, one per event. Fair chance = max(price, how often that price range actually won) |
-| Corrections | One market: p ≤ 0.05. Several markets or wallets: Benjamini–Hochberg at 5% |
-| Reference library | Resolved markets from the last 180 days with at least $10k volume, in politics and world events, awards, and company or government announcements |
+| Positions | Net shares held at the scheduled end, cost $10+, first-buy entry price 2¢–95¢, one bet per wallet per event (neg-risk Yes legs merged) |
+| Null odds | q = max(entry price, calibrated win rate), from an isotonic fit of realized win rates |
+| Test 1 | Exact Poisson-binomial p for observed wins; Tarone pre-filter; Benjamini–Hochberg at 5%; BY-robust badge |
+| Test 2 | First entries within 6 h before favorable +10-point jumps, against other wallets' entry rate |
+| Robustness | Leave-one-event-out; tiers; edge profile (high-volume vs concentrated longshot) |
+| Market verdict | Flagged tested participants vs population rate, exact binomial; BH across markets |
+| Validation | Matched-twin placebo (empirical FDR), simulated outcomes, injected wallets (power), crypto control, timing placebo |
 
-Full method: [docs/market-integrity-method.md](docs/market-integrity-method.md). Wallet test details: [docs/methodology.md](docs/methodology.md).
+Full method: [docs/methodology.md](docs/methodology.md). Pre-move timing context: [docs/market-integrity-method.md](docs/market-integrity-method.md).
 
 ## Tech
 
@@ -55,7 +59,7 @@ npm install
 npm run dev -- --port 3000
 ```
 
-Open http://localhost:3000. Open a resolved market and select its **Integrity test** tab, or go to **Integrity search** to search several markets.
+Open http://localhost:3000. Open any market and select its **Integrity test** tab, or go to **Integrity search** to search several markets and see the validation panel.
 
 Build the reference library while the dev server is running. It takes a few hours, and you can stop and restart it at any time.
 
@@ -69,8 +73,8 @@ Tests: `npm test` and `npm run typecheck`.
 
 ## Limits
 
-- "Unusual" means unlikely if nobody knew early. Fast readers of public news, or good forecasters, can produce the same pattern.
-- A careful insider who trades small can stay invisible.
-- Markets where the information arrived gradually have no sudden move, so they can't be tested.
-- One person using many wallets looks like many small traders.
-- Results apply only to resolved markets and the library this tool built.
+- A flagged record means wins unlikely under market odds. Skill, research, or reading public news faster produce the same pattern.
+- One-shot insiders are invisible: a fresh wallet with one informed bet has no record to test.
+- One person using many wallets looks like many small, unremarkable records.
+- Only positions held to resolution are scored; early exits are only partly covered by the timing test.
+- Results apply only to the library this tool built.

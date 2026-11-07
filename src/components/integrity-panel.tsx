@@ -5,32 +5,24 @@ import { ArrowUpRight, Info, LoaderCircle, RefreshCw } from "lucide-react";
 import { requestJson } from "@/lib/client";
 import { dateTime, money, shortAddress } from "@/lib/domain";
 import type { integrityReport } from "@/lib/integrity/data";
-import type { WalletLabel } from "@/lib/integrity/core";
-import { LIMITS, SETTINGS } from "@/lib/integrity/settings";
+import { EDGE_LABELS, PARTICIPATION_LABELS, TIER_LABELS } from "@/lib/integrity/wallet-spec";
+import { LIMITS, SETTINGS, WALLET_SETTINGS } from "@/lib/integrity/settings";
 
 export type IntegrityReport = Awaited<ReturnType<typeof integrityReport>>;
 
-const fmtP = (p: number | null | undefined) =>
+export const fmtP = (p: number | null | undefined) =>
   p === null || p === undefined ? "—" : p < 0.001 ? p.toExponential(1) : p.toFixed(3);
 const pct = (v: number | null | undefined, d = 0) =>
   v === null || v === undefined ? "—" : `${(v * 100).toFixed(d)}%`;
 
-export const WALLET_LABELS: Record<WalletLabel, string> = {
-  "unusual-record": "Unusual record elsewhere",
-  "nothing-unusual": "Nothing unusual",
-  "too-few-bets": "Too few other bets",
-  "record-too-short": "Record too short to test",
-};
-
 export const VERDICTS: Record<string, string> = {
+  ...PARTICIPATION_LABELS,
   unusual: "Unusual pre-move buying",
   "nothing-unusual": "Nothing unusual detected",
-  "not-testable": "Not testable",
-  "history-too-short": "History too short for this group",
-  uncalibrated: "Market test not calibrated for this category",
 };
+export const DISCLAIMER = "Statistical anomaly under market odds. Consistent with skill, speed, or information. Not an accusation.";
 
-/** Counts single searches in this browser session (the "40 single searches" rule). */
+/** Counts single searches in this browser session (each search is its own test). */
 function useSearchCount(condition: string) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -49,7 +41,8 @@ function useSearchCount(condition: string) {
 export default function IntegrityPanel({ condition }: { condition: string }) {
   const [data, setData] = useState<IntegrityReport | null>(null),
     [error, setError] = useState(""),
-    [reload, setReload] = useState(0);
+    [reload, setReload] = useState(0),
+    [showAll, setShowAll] = useState(false);
   const searches = useSearchCount(condition);
   useEffect(() => {
     let live = true;
@@ -57,7 +50,7 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
     setData(null);
     requestJson<IntegrityReport>(`/api/integrity/${condition}`)
       .then((d) => live && setData(d))
-      .catch((e) => live && setError(e instanceof Error ? e.message : "Integrity test failed."));
+      .catch((e) => live && setError(e instanceof Error ? e.message : "Analysis failed."));
     return () => {
       live = false;
     };
@@ -66,7 +59,7 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
   if (error)
     return (
       <div className="empty-state" role="alert">
-        <h3>Integrity test unavailable</h3>
+        <h3>Wallet analysis unavailable</h3>
         <p>{error}</p>
         <button className="outline-button" onClick={() => setReload((r) => r + 1)}>
           <RefreshCw size={15} /> Retry
@@ -77,53 +70,55 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
     return (
       <div className="loading-state" role="status">
         <LoaderCircle className="spin" size={27} />
-        <p>Retrieving every fill for this market and running the pre-move test. Large markets take up to a minute.</p>
+        <p>Retrieving every trade in this market, then checking each participant&apos;s record in other resolved markets.</p>
       </div>
     );
 
-  const t = data.test,
-    verdictKey = t.verdict !== "not-testable" && data.calibrated === false ? "uncalibrated" : t.verdict,
-    favored = t.move ? data.market.outcomes[t.move.favored] : null,
-    flagged = data.wallets.rows.filter((r) => r.label === "unusual-record").length;
+  const part = data.participation,
+    t = data.test,
+    rows = [...part.rows].sort(
+      (a, b) =>
+        Number(b.flagged) - Number(a.flagged) ||
+        Number(b.weak) - Number(a.weak) ||
+        Number(!!b.card?.tested1) - Number(!!a.card?.tested1) ||
+        b.usd - a.usd,
+    ),
+    visible = showAll ? rows : rows.filter((r) => r.card).slice(0, 40);
 
   return (
     <div className="integrity">
       {searches > LIMITS.sessionSearchesBeforeHint ? (
         <div className="inline-notice warning">
           <Info size={15} />
-          You have run {searches} single-market searches this session. Each is its own test; pointing to the one that came
-          back unusual skips the correction.{" "}
-          <Link href="/integrity">Search several markets together</Link>.
+          You have checked {searches} markets one at a time this session. Each is its own test;{" "}
+          <Link href="/integrity">search several markets together</Link> for a corrected answer.
         </div>
       ) : null}
-      <section className={`panel integrity-verdict verdict-${verdictKey}`}>
+
+      <section className={`panel integrity-verdict verdict-${part.verdict}`}>
         <div>
-          <div className="eyebrow">MARKET TEST · {data.method}</div>
-          <h2>{VERDICTS[verdictKey]}</h2>
+          <div className="eyebrow">WALLET ANALYSIS · {data.method}</div>
+          <h2>{PARTICIPATION_LABELS[part.verdict]}</h2>
           <p>{data.headline}</p>
         </div>
         <dl className="integrity-facts">
           <div>
-            <dt>p-value</dt>
-            <dd>{fmtP(t.p)}</dd>
-          </div>
-          <div>
-            <dt>Comparison windows</dt>
-            <dd>{t.comparisonWindows.toLocaleString()}</dd>
-          </div>
-          <div>
-            <dt>Measured false-alarm rate</dt>
-            <dd>{data.categoryFalseAlarmRate === null ? "not yet measured" : pct(data.categoryFalseAlarmRate, 1)}</dd>
-          </div>
-          <div>
-            <dt>Percentile</dt>
+            <dt>Flagged / tested participants</dt>
             <dd>
-              {data.comparison.percentile === null
-                ? data.comparison.belowFloor
-                  ? "below floor"
-                  : "—"
-                : `${pct(data.comparison.percentile)} of ${data.comparison.compared}`}
+              {part.flagged} / {part.tested}
             </dd>
+          </div>
+          <div>
+            <dt>Expected from population rate</dt>
+            <dd>{part.expected.toFixed(1)}</dd>
+          </div>
+          <div>
+            <dt>Exact binomial p</dt>
+            <dd>{fmtP(part.p)}</dd>
+          </div>
+          <div>
+            <dt>Measured false-flag rate</dt>
+            <dd>{data.population.empiricalFdr === null ? "not yet measured" : pct(data.population.empiricalFdr, 1)}</dd>
           </div>
         </dl>
       </section>
@@ -135,152 +130,129 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
         </div>
       ) : null}
 
-      <div className="analysis-grid">
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Hourly Yes price</h2>
-              <p>
-                {t.move
-                  ? `Big move ${dateTime(t.move.startTime)}: ${(t.move.from * 100).toFixed(0)}¢ → ${(t.move.to * 100).toFixed(0)}¢. Favored side: ${favored}.`
-                  : "No qualifying big move."}
-              </p>
-            </div>
-          </div>
-          {data.chart ? <HourlyChart chart={data.chart} /> : <p className="chart-empty">No trades before resolution.</p>}
-          <p className="panel-footnote">
-            Last trade price per clock hour, carried forward. Shaded: the {SETTINGS.windowHours}-hour pre-move window.
-            {t.move ? ` Largest wallet made ${pct(t.move.maxWalletShare)} of the move hour's dollars.` : ""}
-          </p>
-        </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Pre-move window vs. every earlier window</h2>
-              <p>
-                {t.preScore === null
-                  ? "Not scored."
-                  : `Score ${t.preScore.toFixed(2)}; ${t.atLeastAsHigh} of ${t.comparisonWindows} earlier windows scored at least as high.`}
-              </p>
-            </div>
-          </div>
-          {t.comparisonScores.length && t.preScore !== null ? (
-            <ScoreHistogram scores={t.comparisonScores} pre={t.preScore} />
-          ) : (
-            <p className="chart-empty">{t.reason}</p>
-          )}
-          <dl className="integrity-formula">
-            <div>
-              <dt>Backing</dt>
-              <dd>{money(t.backing)}</dd>
-            </div>
-            <div>
-              <dt>Against</dt>
-              <dd>{money(t.against)}</dd>
-            </div>
-            <div>
-              <dt>Cushion</dt>
-              <dd>{money(t.cushion)}</dd>
-            </div>
-            <div>
-              <dt>p = (1 + {t.atLeastAsHigh ?? "k"}) ÷ (1 + {t.comparisonWindows})</dt>
-              <dd>{fmtP(t.p)}</dd>
-            </div>
-          </dl>
-          <p className="panel-footnote">
-            Aggressor flow: (backing − against) ÷ (backing + against + cushion). Backing = taker buys of the favored side
-            plus taker sells of the other side.
-          </p>
-        </section>
-      </div>
-
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h2>Wallet check</h2>
+            <h2>Participating wallets</h2>
             <p>
-              {data.wallets.rows.length
-                ? `${flagged} of ${data.wallets.rows.length} listed wallets flagged. m = ${data.wallets.m}; pre-filter bar ${fmtP(data.wallets.prefilterBar)}; ${data.wallets.correction} across ${data.wallets.tested} tested wallets${data.wallets.correction === "BH" ? ` (bar ${fmtP(data.wallets.threshold)})` : ""}. Records come from ${data.wallets.libraryBets.toLocaleString()} library bets outside this event.`
-                : "No wallets backed the favored side by at least $100 in the pre-move window."}
+              The {part.examined} largest wallets by volume in this market. {part.inPopulation} appear in the library;{" "}
+              {part.tested} have a testable record (at least {WALLET_SETTINGS.minPositions} resolved bets elsewhere).
+              Flagged = Test 1 anomaly that survives leave-one-event-out and still clears the cutoff (
+              {fmtP(data.population.cutoff)}) with this market&apos;s event removed. Population: {data.population.tested.toLocaleString()}{" "}
+              tested wallets across {data.population.markets.toLocaleString()} markets, {data.population.primary} at 5%.
             </p>
           </div>
+          <button className="text-button" onClick={() => setShowAll((s) => !s)}>
+            {showAll ? "Only wallets with records" : `Show all ${part.examined}`}
+          </button>
         </div>
-        {data.wallets.rows.length ? (
-          <div className="table-scroll">
-            <table className="records-table">
-              <thead>
-                <tr>
-                  <th>Wallet</th>
-                  <th>{t.move ? "Net behind favored side" : "Winning-side holding"}</th>
-                  <th>Record elsewhere</th>
-                  <th>Luck ratio</th>
-                  <th>p / q</th>
-                  <th>Label</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.wallets.rows.map((r) => (
-                  <tr key={r.wallet}>
+        <div className="table-scroll">
+          <table className="records-table">
+            <thead>
+              <tr>
+                <th>Wallet</th>
+                <th>Volume here</th>
+                <th>Tier</th>
+                <th>Record elsewhere</th>
+                <th>Test 1 p / q</th>
+                <th>Odds ×</th>
+                <th>Test 2 timing</th>
+                <th>Edge profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((r) => {
+                const c = r.card;
+                return (
+                  <tr key={r.wallet} className={r.flagged ? "row-flagged" : ""}>
                     <td>
                       <Link className="evidence-link" href={`/wallet/${r.wallet}`}>
                         {shortAddress(r.wallet)}
                         <ArrowUpRight size={12} />
                       </Link>
                     </td>
-                    <td>{r.netUsd === null ? "—" : money(r.netUsd)}</td>
                     <td>
-                      {r.record.bets.length ? `${r.record.wins} of ${r.record.bets.length} won` : "no library bets"}
+                      {money(r.usd)}
+                      <span className="cell-subline">{pct(r.share, 1)} of volume</span>
+                    </td>
+                    <td>
+                      <span className={`integrity-label tier-${c ? c.tier : "none"} ${r.flagged ? "label-unusual-record" : ""}`}>
+                        {!c ? "No library record" : !c.tested1 ? "Not tested" : TIER_LABELS[c.tier]}
+                      </span>
                       <span className="cell-subline">
-                        {r.record.bets.length ? `${r.record.expected.toFixed(2)} expected` : ""}
+                        {[c?.byRobust ? "BY-robust" : "", c?.loeo === true ? "LOEO pass" : c?.loeo === false ? "LOEO fail" : ""]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </span>
                     </td>
-                    <td>{r.record.luckRatio === null ? "—" : r.record.luckRatio.toFixed(1)}</td>
                     <td>
-                      {fmtP(r.record.p)}
-                      <span className="cell-subline">q {fmtP(r.q)}</span>
+                      {c ? `${c.O} of ${c.n} won` : "—"}
+                      <span className="cell-subline">{c ? `${c.E.toFixed(2)} expected` : ""}</span>
                     </td>
                     <td>
-                      <span className={`integrity-label label-${r.label}`}>{WALLET_LABELS[r.label]}</span>
-                      {r.fragile ? <span className="cell-subline">depends on one bet</span> : null}
+                      {c ? fmtP(c.p1) : "—"}
+                      <span className="cell-subline">
+                        {c?.q1 != null ? `q ${fmtP(c.q1)}` : ""}
+                        {r.pExcluding !== null ? ` · without this market ${fmtP(r.pExcluding)}` : ""}
+                      </span>
                     </td>
+                    <td>{c ? (c.odds === Infinity ? `all ${c.n} won` : c.odds === null ? "—" : `×${c.odds.toFixed(1)}`) : "—"}</td>
+                    <td>
+                      {c ? `${c.K} vs ${c.EK.toFixed(1)}` : "—"}
+                      <span className="cell-subline">{c?.q2 != null ? `q ${fmtP(c.q2)}` : ""}</span>
+                    </td>
+                    <td>{c ? EDGE_LABELS[c.edge] : "—"}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <p className="panel-footnote">
-          Bets of ${SETTINGS.walletRecord.minCost}+ priced {SETTINGS.walletRecord.minPrice * 100}¢–
-          {SETTINGS.walletRecord.maxPrice * 100}¢, held to resolution, one per event, at least{" "}
-          {SETTINGS.walletRecord.minBets}. Fair chance = max(price, price-bucket win rate). Exact Poisson-binomial p-values.
-          {data.wallets.falseFlagRate === null
-            ? " Fake-wallet false-alarm rate not yet measured."
-            : ` Fake-wallet false-flag rate ${pct(data.wallets.falseFlagRate, 1)}.`}
+          {DISCLAIMER} Test 1: exact Poisson-binomial on resolved bets, q = max(entry price, calibrated win rate). Test 2:
+          first entries within {WALLET_SETTINGS.preJumpHours} hours before favorable price jumps, against other wallets&apos;
+          entry rate. Tiers: strong = both tests and LOEO; anomaly = Test 1 and LOEO; weak = otherwise flagged.
         </p>
       </section>
 
-      {t.rejectedMoves.length ? (
-        <details className="panel market-rules">
-          <summary>Larger jumps that did not qualify ({t.rejectedMoves.length})</summary>
-          <ul>
-            {t.rejectedMoves.slice(0, 10).map((m) => (
-              <li key={m.hour}>
-                {m.change > 0 ? "+" : ""}
-                {(m.change * 100).toFixed(0)} points: {m.reason}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+      <details className="panel market-rules" open={t.verdict !== "not-testable"}>
+        <summary>Pre-move buying in this market (context, not the verdict)</summary>
+        {t.verdict === "not-testable" ? (
+          <p className="chart-empty">{t.reason}</p>
+        ) : (
+          <div className="analysis-grid">
+            <section>
+              <h3>Hourly Yes price</h3>
+              <p className="panel-footnote">
+                {t.move
+                  ? `Big move ${dateTime(t.move.startTime)}: ${(t.move.from * 100).toFixed(0)}¢ → ${(t.move.to * 100).toFixed(0)}¢. Shaded: the ${SETTINGS.windowHours}-hour pre-move window.`
+                  : "No qualifying big move."}
+              </p>
+              {data.chart ? <HourlyChart chart={data.chart} /> : null}
+            </section>
+            <section>
+              <h3>Pre-move window vs. every earlier window</h3>
+              <p className="panel-footnote">
+                Score {t.preScore?.toFixed(2)}; {t.atLeastAsHigh} of {t.comparisonWindows} earlier windows at least as high
+                (p = {fmtP(t.p)}). Random-time placebo rate for this category:{" "}
+                {data.categoryFalseAlarmRate === null ? "not yet measured" : pct(data.categoryFalseAlarmRate, 1)}.
+              </p>
+              {t.comparisonScores.length && t.preScore !== null ? (
+                <ScoreHistogram scores={t.comparisonScores} pre={t.preScore} />
+              ) : null}
+            </section>
+          </div>
+        )}
+      </details>
 
       <details className="panel market-rules">
-        <summary>Limits of this test</summary>
+        <summary>Limits of this analysis</summary>
         <ul>
-          <li>&ldquo;Unusual&rdquo; means unlikely if nobody knew early. Fast readers of public news, or good forecasters, can produce the same pattern.</li>
-          <li>&ldquo;Nothing unusual detected&rdquo; is not a clean bill of health. A careful insider who trades small can stay invisible.</li>
-          <li>Markets without a sudden move cannot be tested for timing, because the information arrived gradually.</li>
-          <li>One person using many wallets looks like many small traders. Wallets are shown as shortened addresses only.</li>
-          <li>Results apply only to resolved markets and the library built for this tool ({data.library.markets} markets).</li>
+          <li>A flagged record means wins that are unlikely under market odds. Skill, research and fast reading of public news produce the same pattern.</li>
+          <li>One-shot insiders are invisible: a fresh wallet with one informed bet has no record to test.</li>
+          <li>One person using many wallets looks like many small, unremarkable records.</li>
+          <li>Only positions held to resolution are scored; early exits are only partly covered by the timing test.</li>
+          <li>Wallets appear as shortened addresses only, with no attempt to link them to people.</li>
         </ul>
       </details>
     </div>
@@ -350,12 +322,6 @@ function ScoreHistogram({ scores, pre }: { scores: number[]; pre: number }) {
       <line className="move-line" x1={px} x2={px} y1={0} y2={h} />
       <text x={Math.min(w - 70, px + 4)} y={12} className="chart-label">
         pre-move {pre.toFixed(2)}
-      </text>
-      <text x={0} y={h + 14} className="chart-label">
-        {lo.toFixed(1)}
-      </text>
-      <text x={w - 22} y={h + 14} className="chart-label">
-        {hi.toFixed(1)}
       </text>
     </svg>
   );

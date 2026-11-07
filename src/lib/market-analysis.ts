@@ -142,33 +142,30 @@ export function analyzeMarket(bundle: MarketBundle): MarketAudit {
 }
 /** Integrity evidence cited by the market report (IDs I1–I3). */
 export function integrityFindings(integrity: IntegrityReport) {
-  const t = integrity.test,
-    flagged = integrity.wallets.rows.filter((r) => r.label === "unusual-record").length;
+  const part = integrity.participation,
+    t = integrity.test,
+    fdr = integrity.population.empiricalFdr;
   return [
     {
       id: "I1",
-      title: "Pre-move market test",
+      title: "Participating wallets with anomalous records",
       text:
-        t.verdict === "not-testable"
-          ? t.reason
-          : integrity.calibrated === false
-            ? `The random-time placebo rate for this category exceeds 10%, so the market test (p = ${t.p!.toPrecision(2)}) is not reported as a verdict.`
-            : `${t.verdict === "unusual" ? "Unusual pre-move buying" : "Nothing unusual detected"}: the 6 hours before the ${t.move!.change > 0 ? "rise" : "fall"} scored ${t.preScore!.toFixed(2)}, and ${t.atLeastAsHigh} of ${t.comparisonWindows} earlier windows scored at least as high (p = ${t.p!.toPrecision(2)}, single-market bar 0.05).`,
+        part.verdict === "not-testable"
+          ? `Only ${part.tested} of the ${part.examined} largest participants have testable records elsewhere; at least 5 are needed for a verdict.`
+          : `${part.flagged} of ${part.tested} tested participants are flagged (Test 1 anomaly that survives leave-one-event-out, re-tested without this market). The population rate predicts ${part.expected.toFixed(1)}; exact binomial p = ${part.p!.toPrecision(2)}. Flagged wallets traded ${(part.flaggedVolumeShare * 100).toFixed(1)}% of the market's volume.`,
     },
     {
       id: "I2",
-      title: "Comparison with the library",
-      text:
-        integrity.comparison.percentile === null
-          ? "No comparable library markets are available yet."
-          : `The pre-move score is higher than ${Math.round(integrity.comparison.percentile * 100)}% of ${integrity.comparison.compared} comparable library markets. This is description, not a test.`,
+      title: "How reliable a flag is",
+      text: `Flags come from ${integrity.population.tested.toLocaleString()} tested wallets across ${integrity.population.markets.toLocaleString()} library markets, corrected with ${integrity.population.primary} at 5%.${fdr === null ? " The matched-twin placebo false-flag rate is not yet measured." : ` Matched-twin placebo (Placebo A) false-flag rate: ${(fdr * 100).toFixed(1)}%.`}`,
     },
     {
       id: "I3",
-      title: "Wallet check",
-      text: integrity.wallets.rows.length
-        ? `${flagged} of ${integrity.wallets.rows.length} listed wallets have an unusual record in other library markets after the pre-filter and ${integrity.wallets.correction} at 5%.`
-        : "No wallets were listed for this market.",
+      title: "Pre-move buying (context)",
+      text:
+        t.verdict === "not-testable"
+          ? t.reason
+          : `Buying in the 6 hours before the market's big move scored ${t.preScore!.toFixed(2)}; ${t.atLeastAsHigh} of ${t.comparisonWindows} earlier windows scored at least as high (p = ${t.p!.toPrecision(2)}). Context only; it does not set the verdict.`,
     },
   ];
 }

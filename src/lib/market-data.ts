@@ -90,6 +90,35 @@ export async function gamma(
   }
   throw new DataError("Market discovery failed.");
 }
+/** Read a polymarket.us event's title from its page (og:title), stopping once found. */
+async function usEventTitle(slug: string): Promise<string | null> {
+  try {
+    const r = await fetch(`https://polymarket.us/event/${encodeURIComponent(slug)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(12000),
+      headers: { Accept: "text/html" },
+    });
+    if (!r.ok || !r.body) return null;
+    const reader = r.body.getReader(),
+      decoder = new TextDecoder();
+    let html = "";
+    while (html.length < 400_000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value, { stream: true });
+      const m = html.match(/property="og:title" content="([^"]{3,200})"/) ?? html.match(/<title>([^<]{3,200})<\/title>/);
+      if (m) {
+        reader.cancel().catch(() => {});
+        return m[1].replace(/\s*\|\s*Polymarket\s*$/i, "").replace(/&amp;/g, "&").trim() || null;
+      }
+    }
+    reader.cancel().catch(() => {});
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function discoverMarkets(
   query = "",
   state: "active" | "closed" | "all" = "active",
@@ -123,13 +152,29 @@ export async function discoverMarkets(
         throw new DataError("No saved results for this search.", 404);
       let events: unknown[] = [],
         direct: unknown[] = [],
-        hasMore = false;
+        hasMore = false,
+        usTitle = "";
       if (parsed.kind === "condition") {
         const raw = await gamma("markets", { condition_ids: parsed.condition });
         direct = Array.isArray(raw) ? raw : [];
       } else if (parsed.kind === "market") {
         const raw = await gamma("markets", { slug: parsed.slug });
         direct = Array.isArray(raw) ? raw : [];
+      } else if (parsed.kind === "us-event") {
+        // polymarket.us runs a separate order book whose trades are not in the
+        // public Data API. Match it to the main exchange by its event title.
+        const shared = await gamma("events", { slug: parsed.slug }).catch(() => []);
+        if (Array.isArray(shared) && shared.length) events = shared;
+        else {
+          const title = await usEventTitle(parsed.slug);
+          if (!title)
+            throw new DataError("That polymarket.us event could not be read. Search its title instead.", 404);
+          usTitle = title;
+          const raw = object(
+            await gamma("public-search", { q: title, limit_per_type: "10" }),
+          );
+          events = Array.isArray(raw.events) ? raw.events : [];
+        }
       } else if (parsed.kind === "event") {
         const raw = await gamma("events", { slug: parsed.slug });
         events = Array.isArray(raw) ? raw : [];
@@ -193,6 +238,11 @@ export async function discoverMarkets(
         provenance: {
           origin: "live" as const,
           fetchedAt: new Date().toISOString(),
+          ...(usTitle
+            ? {
+                warning: `polymarket.us is Polymarket's separate US exchange, and its trades are not public. Showing the matching markets on the main Polymarket exchange for “${usTitle}”.`,
+              }
+            : {}),
         },
       });
     } catch (error) {

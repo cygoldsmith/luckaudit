@@ -1,7 +1,7 @@
 import { auditWallet } from "./analysis";
 import { getWallet } from "./polymarket";
 import { benjaminiHochberg } from "./integrity/core";
-import { libraryCalibration } from "./integrity/data";
+import { libraryQ } from "./integrity/data";
 import { SETTINGS } from "./integrity/settings";
 import type { MarketAudit, ParticipantAudit } from "./market-types";
 
@@ -13,7 +13,7 @@ export async function scanParticipants(
   audit: MarketAudit,
   count = 3,
 ): Promise<ParticipantAudit[]> {
-  const cal = await libraryCalibration(),
+  const qOf = await libraryQ(),
     selected = audit.participants.slice(0, count),
     results: ParticipantAudit[] = new Array(selected.length);
   let next = 0;
@@ -23,7 +23,7 @@ export async function scanParticipants(
         participant = selected[index];
       try {
         const bundle = await getWallet(participant.address);
-        const r = auditWallet(bundle, cal).record;
+        const r = auditWallet(bundle, qOf).record;
         results[index] = {
           address: participant.address,
           label: r.label,

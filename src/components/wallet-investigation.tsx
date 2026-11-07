@@ -22,6 +22,8 @@ import {
 import { SiteHeader } from "./app-frame";
 import { ProfitChart, WinsChart } from "./audit-charts";
 import { RECORD_LABELS } from "@/lib/analysis";
+import { DISCLAIMER } from "./integrity-panel";
+import { EDGE_LABELS, TIER_LABELS } from "@/lib/integrity/wallet-spec";
 import WalletPrimaryMarkets from "./wallet-primary-markets";
 import {
   csv,
@@ -744,6 +746,7 @@ export default function WalletInvestigation({
             ) : null}
             {tab === "record" ? (
               <>
+                {data.library ? <LibraryCard library={data.library} /> : null}
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
@@ -1008,4 +1011,63 @@ function Metric({
 }
 function AudioMark() {
   return <span className="chart-source-label">API history</span>;
+}
+
+function LibraryCard({ library }: { library: NonNullable<Investigation["library"]> }) {
+  const c = library.card;
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <h2>Population wallet card (Advanced spec)</h2>
+          <p>
+            {c
+              ? `Tested against ${library.tested.toLocaleString()} wallets in the library, ${library.primary} at 5%.`
+              : "This wallet has no positions in the library markets built so far."}
+            {library.empiricalFdr !== null ? ` Measured false-flag rate ${(library.empiricalFdr * 100).toFixed(1)}%.` : ""}
+          </p>
+        </div>
+        {c ? (
+          <span className={`assessment-badge ${c.tier === 1 || c.tier === 2 ? "unusual" : c.tier === 3 ? "insufficient" : "within-baseline"}`}>
+            <ShieldCheck size={14} />
+            {!c.tested1 ? "Not tested" : TIER_LABELS[c.tier]}
+          </span>
+        ) : null}
+      </div>
+      {c ? (
+        <>
+          <div className="simulation-metrics">
+            <Metric title="Record" value={`${c.O} / ${c.n}`} note={`${c.E.toFixed(2)} expected wins`} />
+            <Metric
+              title="Test 1 p / q"
+              value={fmtP(c.p1)}
+              note={`q ${fmtP(c.q1)}${c.byRobust ? " · BY-robust" : ""}${c.loeo === null ? "" : c.loeo ? " · LOEO pass" : " · LOEO fail"}`}
+            />
+            <Metric
+              title="Odds multiplier"
+              value={c.odds === null ? "—" : c.odds === Infinity ? `all ${c.n} won` : `×${c.odds.toFixed(1)}`}
+              note={EDGE_LABELS[c.edge]}
+            />
+            <Metric title="Test 2 timing" value={`${c.K} vs ${c.EK.toFixed(1)}`} note={`p ${fmtP(c.p2)} · q ${fmtP(c.q2)}`} />
+          </div>
+          {c.top.length ? (
+            <div className="evidence-list">
+              {c.top.map((b, i) => (
+                <div key={i}>
+                  <span className="evidence-id">{b.won ? "Won" : "Lost"}</span>
+                  <div>
+                    <strong>{b.title}</strong>
+                    <span>
+                      entry {(b.p * 100).toFixed(1)}¢ · null {(b.q * 100).toFixed(1)}% · {dateTime(b.t)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <p className="panel-footnote">{DISCLAIMER} Money: cost {money(c.cost)}, profit {money(c.profit)} (severity only, not used in detection).</p>
+        </>
+      ) : null}
+    </section>
+  );
 }

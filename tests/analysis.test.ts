@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { auditWallet } from "../src/lib/analysis";
-import { calibrate } from "../src/lib/integrity/core";
+import { calibrate, fairChance } from "../src/lib/integrity/core";
 import { csv } from "../src/lib/client";
 import type { WalletBundle } from "../src/lib/domain";
 const address = "0x" + "a".repeat(40),
@@ -107,13 +107,13 @@ test("partial sales keep the net held shares; selling out is excluded", () => {
 test("cost, price band and both-outcome holdings follow the bet rules", () => {
   const b = fixture(4);
   b.trades[0].size = 40; // $8 < $10
-  b.trades[1].price = 0.6; // above 50¢
-  b.trades[2].price = 0.02; // below 3¢
-  b.trades[2].size = 1000;
+  b.trades[1].price = 0.97; // above 95¢
+  b.trades[2].price = 0.01; // below 2¢
+  b.trades[2].size = 2000;
   b.trades.push({ ...b.trades[3], outcome_index: 1, outcome: "No", token_id: "x", price: 0.8, timestamp: start + 310 });
   const reasons = auditWallet(b).reviews.map((r) => r.reason);
   assert.ok(reasons.some((r) => /Cost under/.test(r)));
-  assert.equal(reasons.filter((r) => /Average price outside/.test(r)).length, 2);
+  assert.equal(reasons.filter((r) => /Entry price outside/.test(r)).length, 2);
   assert.ok(reasons.some((r) => /both outcomes/.test(r)));
 });
 test("several markets in one event keep only the largest bet", () => {
@@ -132,7 +132,7 @@ test("losses count, fair chance uses the library bucket rate when higher", () =>
     { wallet: "w", condition: "m1", event: "e1", outcome: 0, price: 0.25, cost: 20, won: true },
     { wallet: "w", condition: "m2", event: "e2", outcome: 0, price: 0.25, cost: 20, won: false },
   ]);
-  const a = auditWallet(b, cal);
+  const a = auditWallet(b, (p) => fairChance(p, cal), 2);
   assert.equal(a.record.wins, 5);
   assert.equal(a.bets[0].probability, 0.5);
   assert.ok(Math.abs(a.record.expected - 3) < 1e-9);
@@ -151,7 +151,7 @@ test("short records, incomplete coverage and too few bets are not tested", () =>
     { wallet: "w", condition: "m4", event: "e4", outcome: 0, price: 0.45, cost: 20, won: true },
     { wallet: "w", condition: "m5", event: "e5", outcome: 0, price: 0.45, cost: 20, won: false },
   ]);
-  assert.equal(auditWallet(b, cal).record.label, "record-too-short");
+  assert.equal(auditWallet(b, (p) => fairChance(p, cal)).record.label, "record-too-short");
   const c = fixture();
   c.coverage.trades = false;
   assert.equal(auditWallet(c).record.label, "incomplete-history");

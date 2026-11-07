@@ -74,6 +74,7 @@ export function parseMarketQuery(
 ):
   | { kind: "text"; query: string }
   | { kind: "event" | "market"; slug: string; child?: string }
+  | { kind: "us-event"; slug: string }
   | { kind: "condition"; condition: string } {
   const query = input.trim();
   if (query.length > 300)
@@ -87,13 +88,17 @@ export function parseMarketQuery(
     } catch {
       throw new Error("Enter a valid Polymarket link.");
     }
-    if (
-      !["polymarket.com", "www.polymarket.com"].includes(
-        url.hostname.toLowerCase(),
-      )
-    )
+    const host = url.hostname.toLowerCase(),
+      us = ["polymarket.us", "www.polymarket.us"].includes(host);
+    if (!us && !["polymarket.com", "www.polymarket.com"].includes(host))
       throw new Error("Only Polymarket market or event links are supported.");
     const parts = url.pathname.split("/").filter(Boolean);
+    // Polymarket US (polymarket.us) is a separate exchange with its own slugs.
+    if (us) {
+      if (!["event", "market"].includes(parts[0]) || !parts[1] || !/^[-a-zA-Z0-9]+$/.test(parts[1]))
+        throw new Error("Paste a Polymarket event or market link.");
+      return { kind: "us-event", slug: parts[1] };
+    }
     if (
       !["event", "market"].includes(parts[0]) ||
       !parts[1] ||

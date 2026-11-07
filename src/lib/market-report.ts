@@ -40,40 +40,39 @@ export async function explainMarket(
             {
               role: "system",
               content:
-                "Explain a prediction-market integrity screen using only the supplied qualitative evidence. The market test asks whether buying in the six hours before the market's big move was more one-sided toward the eventual favored side than earlier windows. Unusual means unlikely if nobody knew early; it is an anomaly, not an accusation. Nothing unusual is not proof the market was clean. Never use the words insider, cheater, rigged or fair. Do not identify people or infer private information. Never invent news, timestamps or calculations. Numerical facts are shown by the app: do not include digits in prose. Use evidence IDs only in evidenceIds arrays. Give three concise findings, general alternative hypotheses and limitations. Keep title, text and other fields short. Return the requested JSON schema.",
+                "Explain a prediction-market integrity screen using only the supplied qualitative evidence. The verdict counts how many of the market's participating wallets have records elsewhere that are unlikely under market odds, compared with the population rate. Such a record is consistent with skill, speed, or information; it is an anomaly, not an accusation. A typical result is not proof the market was clean. Never use the words insider, cheater, rigged or fair. Do not identify people or infer private information. Never invent news, timestamps or calculations. Numerical facts are shown by the app: do not include digits in prose. Use evidence IDs only in evidenceIds arrays. Give three concise findings, general alternative hypotheses and limitations. Keep title, text and other fields short. Return the requested JSON schema.",
             },
             {
               role: "user",
               content: JSON.stringify({
                 headline: baseline.headline,
                 evidence: [
-                  ...(integrity && t
+                  ...(integrity
                     ? [
                         {
                           id: "I1",
                           observation:
-                            t.verdict === "not-testable"
-                              ? "Market test not testable"
-                              : integrity.calibrated === false
-                                ? "Market test not calibrated for this category"
-                                : t.verdict === "unusual"
-                                  ? "Pre-move buying was unusually one-sided at the five percent bar"
-                                  : "Pre-move buying was not unusual compared with earlier windows",
+                            integrity.participation.verdict === "not-testable"
+                              ? "Too few participants have testable records elsewhere"
+                              : integrity.participation.verdict === "elevated"
+                                ? "More participants have anomalous records elsewhere than the population rate predicts"
+                                : "Participants with anomalous records elsewhere are within the population rate",
                         },
                         {
                           id: "I2",
                           observation:
-                            integrity.comparison.percentile === null
-                              ? "No library comparison yet"
-                              : integrity.comparison.percentile > 0.9
-                                ? "More one-sided than most comparable markets"
-                                : "Within the usual range of comparable markets",
+                            integrity.population.empiricalFdr === null
+                              ? "False-flag rate not yet measured"
+                              : "A matched-twin placebo measures how often random wallets would be flagged",
                         },
                         {
                           id: "I3",
-                          observation: integrity.wallets.rows.some((r) => r.label === "unusual-record")
-                            ? "Some listed wallets have unusual records in other markets"
-                            : "No listed wallet has an unusual record in other markets",
+                          observation:
+                            !t || t.verdict === "not-testable"
+                              ? "Pre-move timing not testable"
+                              : t.verdict === "unusual"
+                                ? "Pre-move buying was one-sided compared with earlier windows (context only)"
+                                : "Pre-move buying was not unusual compared with earlier windows (context only)",
                         },
                       ]
                     : []),

@@ -10,26 +10,25 @@ import {
   type RecordTest,
   type WalletBundle,
 } from "./domain";
-import {
-  fairChance,
-  scoreRecord,
-  type Calibration,
-  type WalletRecord,
-} from "./integrity/core";
-import { METHOD_ID, SETTINGS } from "./integrity/settings";
+import { scoreRecord, type WalletRecord } from "./integrity/core";
+import { SETTINGS, WALLET_METHOD_ID, WALLET_SETTINGS } from "./integrity/settings";
 
-export const METHOD_VERSION = METHOD_ID;
+export const METHOD_VERSION = WALLET_METHOD_ID;
+/** Null win probability for an entry price: q = max(p, c(p)) from the library calibration curve. */
+export type NullModel = ((price: number) => number) | null;
 export const LIMITATIONS = [
   "This is an anomaly screen, not a finding that a trader is lucky, skilled, or used nonpublic information. Good forecasters and fast readers of public news can produce unusual records.",
   "Wallets opened from the leaderboard were selected for success. A single-wallet p-value does not correct for that selection or for repeated searches; search several wallets together for a Benjamini–Hochberg correction.",
-  "Bets follow the method's rules: net shares (bought − sold) still held at resolution, cost of at least $10, average price 3¢–50¢, not holding both outcomes, and only the largest bet per event. Positions moved by splits, merges or transfers are counted by their trades only.",
-  "Each bet's fair chance is the higher of its price and its price bucket's win rate in the reference library. Prices are not perfectly calibrated probabilities, and related events can still be dependent.",
+  "Positions follow the Advanced spec: net shares (bought − sold) still held at resolution, cost of at least $10, first-buy entry price 2¢–95¢, not holding both outcomes, and one bet per event (the largest). Positions moved by splits, merges or transfers are counted by their trades only.",
+  "Each bet's null probability is q = max(entry price, calibrated win rate at that price) from the library's isotonic calibration curve. Prices are not perfectly calibrated probabilities, and related events can still be dependent.",
   "One person using many wallets looks like many small traders; wallets are shown as shortened addresses only.",
 ];
 
 const PAYOUT = 1_000_000;
 
 interface Book {
+  firstPrice: [number, number];
+  firstTime: [number, number];
   shares: [number, number];
   buyShares: [number, number];
   buyUsd: [number, number];
@@ -43,7 +42,7 @@ interface Book {
 }
 
 /** Rule #7 bets from the wallet's own trades and verified binary resolutions. */
-export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
+export function walletBets(bundle: WalletBundle, qOf: NullModel) {
   const reviews: PositionReview[] = [],
     bets: EligibleBet[] = [];
   const resolutions = new Map(bundle.resolutions.map((r) => [r.condition_id, r]));
@@ -55,7 +54,7 @@ export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
       fees.set(p.token_id, (fees.get(p.token_id) || 0) + p.entry_fees_usdc);
   }
   const books = new Map<string, Book>();
-  const rule = SETTINGS.walletRecord;
+  const rule = { minCost: WALLET_SETTINGS.minCost, minPrice: WALLET_SETTINGS.priceRange[0], maxPrice: WALLET_SETTINGS.priceRange[1] };
   for (const t of bundle.trades) {
     const o = t.outcome_index;
     if ((o !== 0 && o !== 1) || !isFiniteNumber(t.price) || !isFiniteNumber(t.size) || t.size <= 0) continue;
@@ -64,6 +63,8 @@ export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
       books.set(
         t.condition_id,
         (b = {
+          firstPrice: [0, 0],
+          firstTime: [Infinity, Infinity],
           shares: [0, 0],
           buyShares: [0, 0],
           buyUsd: [0, 0],
@@ -83,6 +84,10 @@ export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
     b.tokens[o] = t.token_id;
     b.first = Math.min(b.first, t.timestamp);
     if (t.side === "BUY") {
+      if (t.timestamp < b.firstTime[o]) {
+        b.firstTime[o] = t.timestamp;
+        b.firstPrice[o] = t.price;
+      }
       b.shares[o] += t.size;
       b.buyShares[o] += t.size;
       b.buyUsd[o] += t.size * t.price;
@@ -115,15 +120,16 @@ export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
       continue;
     }
     const o = held[0],
-      price = b.buyShares[o] ? b.buyUsd[o] / b.buyShares[o] : 0,
+      vwap = b.buyShares[o] ? b.buyUsd[o] / b.buyShares[o] : 0,
+      price = b.firstPrice[o],
       shares = b.shares[o],
-      stake = price * shares;
+      stake = vwap * shares;
     if (stake < rule.minCost) {
       reject(`Cost under $${rule.minCost}`, o);
       continue;
     }
     if (price < rule.minPrice || price > rule.maxPrice) {
-      reject(`Average price outside ${rule.minPrice * 100}¢–${rule.maxPrice * 100}¢`, o);
+      reject(`Entry price outside ${rule.minPrice * 100}¢–${rule.maxPrice * 100}¢`, o);
       continue;
     }
     const won = payouts[o] === PAYOUT,
@@ -137,7 +143,7 @@ export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
         outcome: b.outcomes[o],
         slug: b.slug,
         price,
-        probability: fairChance(price, cal),
+        probability: qOf ? qOf(price) : price,
         stake,
         shares,
         fees: fee,
@@ -168,7 +174,8 @@ export function walletBets(bundle: WalletBundle, cal: Calibration | null) {
 export function recordTest(
   bets: EligibleBet[],
   coverageComplete: boolean,
-  cal: Calibration | null,
+  qOf: NullModel,
+  calibrationMarkets = 0,
 ): RecordTest {
   const alpha = SETTINGS.alpha,
     selected = bets.filter((b) => b.selected),
@@ -191,9 +198,9 @@ export function recordTest(
   if (!coverageComplete) {
     label = "incomplete-history";
     reasons.push("Trade or resolution retrieval was incomplete, so the record cannot be tested.");
-  } else if (selected.length < SETTINGS.walletRecord.minBets) {
+  } else if (selected.length < WALLET_SETTINGS.minPositions) {
     label = "too-few-bets";
-    reasons.push(`Fewer than ${SETTINGS.walletRecord.minBets} qualifying bets in different events.`);
+    reasons.push(`Fewer than ${WALLET_SETTINGS.minPositions} qualifying bets in different events.`);
   } else if ((record.allWinChance ?? 1) > alpha + 1e-15) {
     label = "record-too-short";
     reasons.push(`Even winning every bet would have a ${(record.allWinChance! * 100).toFixed(1)}% chance by luck, above the ${alpha * 100}% bar.`);
@@ -219,8 +226,8 @@ export function recordTest(
     label,
     fragile,
     fragileP,
-    calibration: cal && cal.buckets.some((b) => b.winRate !== null) ? "library" : "price-only",
-    calibrationMarkets: cal ? cal.buckets.reduce((s, b) => s + b.markets, 0) : 0,
+    calibration: qOf && calibrationMarkets ? "library" : "price-only",
+    calibrationMarkets,
     reasons,
   };
 }
@@ -239,8 +246,8 @@ function completeSum(values: (number | null)[]) {
     : null;
 }
 
-export function auditWallet(bundle: WalletBundle, cal: Calibration | null = null): Audit {
-  const { bets, reviews } = walletBets(bundle, cal);
+export function auditWallet(bundle: WalletBundle, qOf: NullModel = null, calibrationMarkets = 0): Audit {
+  const { bets, reviews } = walletBets(bundle, qOf);
   const positions = [...new Map(bundle.positions.map((p) => [p.token_id, p])).values()];
   const closed = positions.filter((p) => p.status === "CLOSED");
   const profitableClosed = closed.filter((p) => isFiniteNumber(p.realized_pnl) && p.realized_pnl > 0).length;
@@ -250,7 +257,7 @@ export function auditWallet(bundle: WalletBundle, cal: Calibration | null = null
   return {
     bets,
     reviews,
-    record: recordTest(bets, coverageComplete, cal),
+    record: recordTest(bets, coverageComplete, qOf, calibrationMarkets),
     summary: {
       positions: positions.length,
       closed: closed.length,

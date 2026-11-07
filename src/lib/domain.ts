@@ -205,6 +205,8 @@ export interface Investigation {
   audit: Audit;
   report: Report;
   aiConfigured: boolean;
+  /** Advanced spec wallet card from the library population, when available. */
+  library?: Awaited<ReturnType<typeof import("./integrity/data").walletCard>> | null;
 }
 
 export const isFiniteNumber = (value: unknown): value is number =>

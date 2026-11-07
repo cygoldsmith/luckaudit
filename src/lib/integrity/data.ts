@@ -1,38 +1,50 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { gamma } from "../market-data";
 import { DataError, fetchFills } from "../polymarket";
 import { numeric, object } from "../market-normalize";
 import type { Trade } from "../domain";
 import {
+  benjaminiHochberg,
   buildHourly,
-  calibrate,
   dropFirstHour,
-  excessRate,
-  fakeWalletPlacebo,
-  indexBets,
-  listWallets,
-  marketBets,
   marketTest,
-  multiMarket,
-  percentile,
-  plantedBuying,
   randomTimePlacebo,
-  walletCheck,
-  walletRecord,
-  type Bet,
   type Fill,
   type HourlySeries,
   type LibraryMarket,
   type MarketTest,
   type Resolution,
-  type WalletCheck,
 } from "./core";
+import {
+  analyzePopulation,
+  buildPositions,
+  calibrationCurve,
+  collapseBets,
+  indexByWallet,
+  negativeControl,
+  nullProbability,
+  participationTest,
+  placeboA,
+  placeboB,
+  positiveControl,
+  recordP,
+  timingPlacebo,
+  type CalibrationBin,
+  type ParticipationVerdict,
+  type PopulationResult,
+  type SpecBet,
+  type SpecMarket,
+  type Tier,
+  type WalletResult,
+} from "./wallet-spec";
 import { seededRandom } from "../statistical-core";
-import { LIMITS, METHOD_ID, SETTINGS, type CategoryId } from "./settings";
+import { LIMITS, METHOD_ID, SETTINGS, WALLET_METHOD_ID, WALLET_SETTINGS, type CategoryId } from "./settings";
 
 const root = path.join(process.cwd(), ".luckaudit-cache", "integrity"),
-  libDir = path.join(root, "library");
+  libDir = path.join(root, "library-v2");
+const RECORD_VERSION = `${METHOD_ID}+${WALLET_METHOD_ID}`;
 
 /* ------------------------------------------------------------- metadata */
 
@@ -48,6 +60,9 @@ export interface IntegrityMarketMeta {
   tokens: [string, string];
   outcomes: [string, string];
   closedTime: string | null;
+  /** Scheduled end (Gamma endDate), epoch seconds. */
+  endTime: number | null;
+  negRisk: boolean;
   /** Lifetime Gamma volume, USD. */
   volumeUsd: number | null;
   resolution: Resolution;
@@ -83,6 +98,8 @@ export function categoryOf(tagSlugs: string[]): CategoryId | null {
   return null;
 }
 
+const groupOf = (category: CategoryId | null): "study" | "control" => (category === "control" ? "control" : "study");
+
 /** Normalize a raw Gamma market (+ parent event) into the integrity metadata. */
 export function metaFromGamma(rawMarket: unknown, rawEvent?: unknown): IntegrityMarketMeta | null {
   const m = object(rawMarket),
@@ -112,6 +129,8 @@ export function metaFromGamma(rawMarket: unknown, rawEvent?: unknown): Integrity
     tokens: [tokens[0], tokens[1]],
     outcomes: [outcomes[0], outcomes[1]],
     closedTime,
+    endTime: parseTime(m.endDate),
+    negRisk: m.negRisk === true || e.negRisk === true,
     volumeUsd: numeric(m.volumeNum ?? m.volume),
     resolution: {
       resolved,
@@ -169,22 +188,15 @@ export async function loadMarket(condition: string, known?: IntegrityMarketMeta)
   const hit = loaded.get(condition);
   if (hit && Date.now() - hit.at < 15 * 60_000) return hit.value;
   const meta = known ?? (await marketMeta(condition));
-  if (!meta.resolution.resolved)
-    // Live markets are never labeled, so their fills are not needed.
-    return {
-      meta,
-      taker: [],
-      allSides: [],
-      series: null,
-      coverage: { takerComplete: true, allSidesComplete: true, warnings: [] },
-    };
+  // Live markets are fetched too: their participants' records come from other,
+  // resolved markets. The pre-move timing test still only runs once resolved.
   const [taker, all] = await Promise.all([
     fetchFills(condition, true, LIMITS.takerPages),
     fetchFills(condition, false, LIMITS.allSidesPages),
   ]);
   const warnings: string[] = [];
   const takerFills = toFills(taker.rows, meta.tokens);
-  let series = buildHourly(takerFills, meta.resolution.cutoff);
+  let series = meta.resolution.resolved ? buildHourly(takerFills, meta.resolution.cutoff) : null;
   if (!taker.complete) {
     warnings.push(
       `Taker tape truncated at ${taker.rows.length.toLocaleString()} fills (newest kept). Comparison windows start at the first complete retrieved hour.`,
@@ -192,7 +204,7 @@ export async function loadMarket(condition: string, known?: IntegrityMarketMeta)
     if (series) series = dropFirstHour(series);
   }
   if (!all.complete)
-    warnings.push(`All-sides tape truncated at ${all.rows.length.toLocaleString()} rows; wallet net positions use the retrieved period only.`);
+    warnings.push(`All-sides tape truncated at ${all.rows.length.toLocaleString()} rows; participants and positions cover the retrieved period only.`);
   const value: LoadedMarket = {
     meta,
     taker: takerFills,
@@ -205,21 +217,43 @@ export async function loadMarket(condition: string, known?: IntegrityMarketMeta)
   return value;
 }
 
+/** Participants ranked by their share of the market's (all-sides) trading volume. */
+export function participants(fills: Fill[], limit: number = WALLET_SETTINGS.market.maxParticipants) {
+  const volume = new Map<string, number>();
+  let total = 0;
+  for (const f of fills) {
+    const usd = f.price * f.size;
+    total += usd;
+    volume.set(f.wallet, (volume.get(f.wallet) || 0) + usd);
+  }
+  return {
+    total,
+    wallets: [...volume]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([wallet, usd]) => ({ wallet, usd: Math.round(usd * 100) / 100 })),
+  };
+}
+
 /* -------------------------------------------------------------- library */
 
 export interface LibraryRecord extends LibraryMarket {
   method: string;
   closedTime: string | null;
   volumeUsd: number | null;
-  bets: Bet[];
+  /** Advanced spec inputs for this market (positions empty if the tape was truncated). */
+  spec: SpecMarket;
+  /** Top participants by volume, for market verdicts on library markets. */
+  participants: { wallet: string; usd: number }[];
+  participantVolume: number;
   warnings: string[];
   builtAt: string;
 }
 
-async function writeJson(file: string, value: unknown) {
+async function writeFileAtomic(file: string, data: string | Buffer) {
   await mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temp, JSON.stringify(value));
+  await writeFile(temp, data);
   // OneDrive and antivirus can briefly lock files on Windows; retry the swap.
   for (let attempt = 0; ; attempt++) {
     try {
@@ -232,9 +266,12 @@ async function writeJson(file: string, value: unknown) {
     }
   }
 }
+const writeJson = (file: string, value: unknown) =>
+  writeFileAtomic(file, file.endsWith(".gz") ? gzipSync(JSON.stringify(value)) : JSON.stringify(value));
 async function readJson<T>(file: string): Promise<T | null> {
   try {
-    return JSON.parse(await readFile(/* turbopackIgnore: true */ file, "utf8")) as T;
+    const buf = await readFile(/* turbopackIgnore: true */ file);
+    return JSON.parse((file.endsWith(".gz") ? gunzipSync(buf) : buf).toString("utf8")) as T;
   } catch {
     return null;
   }
@@ -242,40 +279,39 @@ async function readJson<T>(file: string): Promise<T | null> {
 
 const round = (a: number[], d: number) => a.map((v) => Math.round(v * 10 ** d) / 10 ** d);
 
-function winnerHoldings(fills: Fill[], resolution: Resolution) {
-  const win: 0 | 1 = resolution.yesWon ? 0 : 1,
-    net = new Map<string, number>();
-  for (const f of fills) {
-    if (f.outcome !== win || (resolution.cutoff !== null && f.timestamp >= resolution.cutoff)) continue;
-    net.set(f.wallet, (net.get(f.wallet) || 0) + (f.side === "BUY" ? f.size : -f.size));
-  }
-  return new Map([...net].filter(([, v]) => v > 0.01));
+/** Market Integrity Search Part A (kept as timing context). */
+export function analyze(m: LoadedMarket) {
+  return { test: marketTest(m.series, m.taker, m.meta.resolution) };
 }
 
-/** Part A + wallet listing + bets for one market. */
-export function analyze(m: LoadedMarket) {
-  const test = marketTest(m.series, m.taker, m.meta.resolution);
-  // Net holdings need every fill since the market opened; a truncated tape would
-  // miss early buys, so its bets are left out of the library rather than guessed.
-  const bets = m.coverage.allSidesComplete
-    ? marketBets(m.allSides, m.meta.condition, m.meta.event, m.meta.resolution)
-    : [];
-  const earliest = m.allSides.reduce((t, f) => Math.min(t, f.timestamp), Infinity),
-    preStart = test.move ? test.move.startTime - SETTINGS.windowHours * 3600 : null,
-    allSidesCoverWindow = m.coverage.allSidesComplete || (preStart !== null && earliest <= preStart);
-  const listingFills = test.move && !allSidesCoverWindow ? m.taker : m.allSides,
-    listingSource: "all-sides" | "taker-only" = listingFills === m.taker ? "taker-only" : "all-sides";
-  const listed = m.meta.resolution.resolved
-    ? listWallets(listingFills, test.move, null, winnerHoldings(m.allSides, m.meta.resolution))
-    : [];
-  return { test, bets, listed, listingSource };
+/** Advanced spec inputs for one market. Trades after the scheduled end (or resolution) are dropped. */
+export function specMarket(m: LoadedMarket): SpecMarket {
+  const cutoff = Math.min(
+    m.meta.endTime ?? Infinity,
+    m.meta.resolution.cutoff ?? Infinity,
+    m.meta.resolution.resolved ? Infinity : Math.floor(Date.now() / 1000),
+  );
+  const built = buildPositions(m.allSides, m.taker, cutoff);
+  return {
+    condition: m.meta.condition,
+    event: m.meta.event,
+    title: m.meta.title,
+    negRisk: m.meta.negRisk,
+    yesWon: m.meta.resolution.yesWon === true,
+    group: groupOf(m.meta.category),
+    // Net holdings need every fill since the market opened; a truncated tape
+    // would miss early buys, so its positions are left out rather than guessed.
+    positions: m.coverage.allSidesComplete && m.meta.resolution.resolved ? built.positions : [],
+    timing: built.timing,
+  };
 }
 
 export function toRecord(m: LoadedMarket): LibraryRecord {
-  const { test, bets, listed } = analyze(m),
-    s = m.series;
+  const { test } = analyze(m),
+    s = m.series,
+    parts = participants(m.allSides);
   return {
-    method: METHOD_ID,
+    method: RECORD_VERSION,
     condition: m.meta.condition,
     event: m.meta.event,
     title: m.meta.title,
@@ -291,8 +327,10 @@ export function toRecord(m: LoadedMarket): LibraryRecord {
       sellNo: round(s.sellNo, 2),
     },
     test: { ...test, comparisonScores: [] },
-    listed,
-    bets,
+    listed: [],
+    spec: specMarket(m),
+    participants: parts.wallets,
+    participantVolume: parts.total,
     warnings: m.coverage.warnings,
     builtAt: new Date().toISOString(),
   };
@@ -306,20 +344,27 @@ interface LibraryIndex {
 
 let libraryCache: { at: number; records: LibraryRecord[] } | null = null;
 
-export async function readLibrary(): Promise<LibraryRecord[]> {
-  if (libraryCache && Date.now() - libraryCache.at < 30_000) return libraryCache.records;
-  let files: string[] = [];
+async function libraryFiles() {
   try {
-    files = (await readdir(/* turbopackIgnore: true */ libDir)).filter((f) => f.endsWith(".json"));
-  } catch {}
-  const records = (await Promise.all(files.map((f) => readJson<LibraryRecord>(path.join(libDir, f))))).filter(
-    (r): r is LibraryRecord => !!r && r.method === METHOD_ID && meetsVolumeFloor(r.volumeUsd),
-  );
+    return (await readdir(/* turbopackIgnore: true */ libDir)).filter((f) => f.endsWith(".json.gz"));
+  } catch {
+    return [];
+  }
+}
+
+export async function readLibrary(): Promise<LibraryRecord[]> {
+  if (libraryCache && Date.now() - libraryCache.at < 60_000) return libraryCache.records;
+  const files = await libraryFiles();
+  const records: LibraryRecord[] = [];
+  for (let i = 0; i < files.length; i += 64) {
+    const chunk = await Promise.all(files.slice(i, i + 64).map((f) => readJson<LibraryRecord>(path.join(libDir, f))));
+    for (const r of chunk) if (r && r.method === RECORD_VERSION && meetsVolumeFloor(r.volumeUsd)) records.push(r);
+  }
   libraryCache = { at: Date.now(), records };
   return records;
 }
 
-const indexFile = () => path.join(root, "library-index.json");
+const indexFile = () => path.join(root, "library-index-v2.json");
 
 export async function libraryStatus() {
   const index = (await readJson<LibraryIndex>(indexFile())) ?? { discoveredAt: null, candidates: [], failed: {} };
@@ -336,12 +381,12 @@ export async function libraryStatus() {
     candidates: index.candidates.length,
     built: records.length,
     failed: Object.keys(index.failed).length,
-    bets: records.reduce((s, r) => s + r.bets.length, 0),
+    bets: records.reduce((s, r) => s + r.spec.positions.length, 0),
     byCategory,
   };
 }
 
-/** Step 0: find resolved markets in the setting #1 categories from the last 180 days. */
+/** Step 0: find resolved markets in the study and control categories from the last 180 days. */
 export async function discoverLibrary() {
   const now = Date.now(),
     seen = new Map<string, LibraryIndex["candidates"][number]>();
@@ -425,17 +470,13 @@ export async function buildLibraryStep(count = 3) {
   if (!index) throw new DataError("Discover the library first.", 409);
   // Count built markets from file names: re-reading every record each step
   // would make a large build quadratic.
-  let files: string[] = [];
-  try {
-    files = await readdir(/* turbopackIgnore: true */ libDir);
-  } catch {}
-  const built = new Set(files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
+  const built = new Set((await libraryFiles()).map((f) => f.slice(0, -".json.gz".length)));
   const todo = index.candidates.filter((c) => !built.has(c.condition) && !index.failed[c.condition]).slice(0, count);
   const done: string[] = [];
   for (const c of todo) {
     try {
       const m = await loadMarket(c.condition, c);
-      await writeJson(path.join(libDir, `${c.condition}.json`), toRecord(m));
+      await writeJson(path.join(libDir, `${c.condition}.json.gz`), toRecord(m));
       loaded.delete(c.condition);
       done.push(c.condition);
     } catch (e) {
@@ -443,14 +484,12 @@ export async function buildLibraryStep(count = 3) {
       // market later instead of dropping it from the library.
       if (e instanceof DataError && [429, 503].includes(e.status)) {
         await writeJson(indexFile(), index);
-        libraryCache = null;
         throw e;
       }
       index.failed[c.condition] = e instanceof Error ? e.message : "failed";
     }
   }
   await writeJson(indexFile(), index);
-  libraryCache = null;
   const candidates = new Set(index.candidates.map((c) => c.condition)),
     builtCandidates = [...built].filter((c) => candidates.has(c)).length + done.length,
     failed = Object.keys(index.failed).length;
@@ -461,109 +500,172 @@ export async function buildLibraryStep(count = 3) {
   };
 }
 
+/* ------------------------------------------------- wallet population */
+
+export interface Population {
+  records: number;
+  curve: CalibrationBin[];
+  index: Map<string, SpecBet[]>;
+  result: PopulationResult;
+  placeboA: ReturnType<typeof placeboA>;
+}
+
+let populationCache: { records: number; at: number; value: Population } | null = null;
+
+/** The Advanced spec pipeline over every wallet in the library (Steps 3–7 + Placebo A). */
+export async function walletPopulation(): Promise<Population> {
+  const records = await readLibrary();
+  if (populationCache && populationCache.records === records.length && Date.now() - populationCache.at < 10 * 60_000)
+    return populationCache.value;
+  const markets = records.map((r) => r.spec),
+    curve = calibrationCurve(markets),
+    index = indexByWallet(collapseBets(markets, curve));
+  let result = analyzePopulation(index, "BH");
+  // Placebo A decides the primary rule: BY if the measured FDR exceeds 10%.
+  const a = placeboA(index, result.family1.flagged);
+  if (a.primary === "BY") result = analyzePopulation(index, "BY");
+  const value = { records: records.length, curve, index, result, placeboA: a };
+  populationCache = { records: records.length, at: Date.now(), value };
+  return value;
+}
+
+/** Null probability for one entry price under the current library calibration. */
+export async function libraryQ() {
+  const pop = await walletPopulation().catch(() => null);
+  return (p: number) => nullProbability(p, pop?.curve ?? null);
+}
+
+/** Library wallet card for one address, if the wallet is in the population. */
+export async function walletCard(address: string) {
+  const pop = await walletPopulation();
+  const w = pop.result.wallets.get(address.toLowerCase());
+  return {
+    card: w ?? null,
+    primary: pop.result.primary,
+    tested: pop.result.tested,
+    empiricalFdr: pop.placeboA.fdr,
+    family1: pop.result.family1,
+  };
+}
+
 /* --------------------------------------------------------- method check */
 
 export async function methodCheck(refresh = false) {
-  const file = path.join(root, "method-check.json"),
+  const file = path.join(root, "method-check-v2.json"),
     records = await readLibrary();
-  const cached = await readJson<ReturnType<typeof computeMethodCheck> & { libraryMarkets: number }>(file);
+  const cached = await readJson<Awaited<ReturnType<typeof computeMethodCheck>> & { libraryMarkets: number }>(file);
   if (!refresh && cached && cached.libraryMarkets === records.length) return cached;
-  const result = { ...computeMethodCheck(records), libraryMarkets: records.length };
+  const result = { ...(await computeMethodCheck(records)), libraryMarkets: records.length };
   await writeJson(file, result);
   return result;
 }
 
-function computeMethodCheck(records: LibraryRecord[]) {
-  const bets = records.flatMap((r) => r.bets),
-    cal = calibrate(bets);
-  const p1 = randomTimePlacebo(records),
-    p2 = fakeWalletPlacebo(records, bets, cal),
-    power = plantedBuying(records);
-  const testable = records.filter((r) => r.test.verdict !== "not-testable");
-  const excess = Object.fromEntries(
-    SETTINGS.library.categories.map((c) => {
-      const inCat = testable.filter((r) => r.category === c.id),
-        hits = inCat.filter((r) => (r.test.p ?? 1) <= SETTINGS.alpha).length,
-        placebo = p1.categories[c.id]?.rate ?? null;
-      return [c.id, placebo === null ? null : { markets: inCat.length, ...excessRate(hits, inCat.length, placebo) }];
-    }),
-  );
+async function computeMethodCheck(records: LibraryRecord[]) {
+  const pop = await walletPopulation();
+  const real = pop.result.family1.flagged,
+    real2 = pop.result.family2.flagged;
   return {
     computedAt: new Date().toISOString(),
-    calibration: cal,
-    randomTime: p1,
-    fakeWallet: p2,
-    plantedBuying: power,
-    excess,
+    calibration: pop.curve,
+    population: {
+      wallets: pop.index.size,
+      tested: pop.result.tested,
+      family1: pop.result.family1,
+      family2: pop.result.family2,
+      primary: pop.result.primary,
+      baseRate: pop.result.baseRate,
+      tiers: ([1, 2, 3] as Tier[]).map((t) => ({
+        tier: t,
+        count: [...pop.result.wallets.values()].filter((w) => w.tier === t).length,
+      })),
+    },
+    placeboA: pop.placeboA,
+    placeboB: placeboB(pop.index, real),
+    positiveControl: positiveControl(pop.index),
+    negativeControl: negativeControl(pop.result),
+    timingPlacebo: timingPlacebo(pop.index, real2),
+    // Market Integrity Search random-time placebo for the pre-move context test.
+    randomTime: randomTimePlacebo(records),
   };
 }
 
 /* --------------------------------------------------------------- report */
 
-export interface WalletCheckResult extends WalletCheck {
-  falseFlagRate: number | null;
-  libraryBets: number;
+export interface ParticipantRow {
+  wallet: string;
+  usd: number;
+  share: number;
+  card: WalletResult | null;
+  /** Test 1 p-value with this market's event removed from the record. */
+  pExcluding: number | null;
+  flagged: boolean;
+  weak: boolean;
 }
 
-function runWalletCheck(
-  listed: { wallet: string; netUsd: number | null }[],
-  excludeEvents: Set<string>,
-  records: LibraryRecord[],
-  correction: "BH" | "Bonferroni",
-  falseFlagRate: number | null,
-): WalletCheckResult {
-  const bets = records.flatMap((r) => r.bets),
-    cal = bets.length ? calibrate(bets) : null,
-    index = indexBets(bets);
-  const check = walletCheck(
-    listed.map((l) => ({ ...l, record: walletRecord(l.wallet, index, excludeEvents, cal) })),
-    correction,
-  );
-  return { ...check, falseFlagRate, libraryBets: bets.length };
+/** Look up a market's participants in the population and count flagged wallets. */
+function participation(
+  pop: Population,
+  people: { wallet: string; usd: number }[],
+  totalUsd: number,
+  event: string,
+) {
+  const rows: ParticipantRow[] = people.map(({ wallet, usd }) => {
+    const card = pop.result.wallets.get(wallet) ?? null;
+    let pExcluding: number | null = null,
+      flagged = false;
+    if (card?.tested1) {
+      const bets = (pop.index.get(wallet) ?? []).filter((b) => b.event !== event);
+      pExcluding = bets.length ? recordP(bets) : null;
+      // Same rule as LOEO: the record must still clear the main run's cutoff
+      // without this market's event, so a wallet is never flagged by this market itself.
+      flagged =
+        (card.tier === 1 || card.tier === 2) &&
+        pExcluding !== null &&
+        pop.result.family1.cutoff > 0 &&
+        pExcluding <= pop.result.family1.cutoff + 1e-300;
+    }
+    return {
+      wallet,
+      usd,
+      share: totalUsd ? usd / totalUsd : 0,
+      card,
+      pExcluding,
+      flagged,
+      weak: !flagged && !!card && card.tier !== 0,
+    };
+  });
+  const tested = rows.filter((r) => r.card?.tested1),
+    flagged = rows.filter((r) => r.flagged);
+  const test = participationTest(tested.length, flagged.length, pop.result.baseRate);
+  return {
+    rows,
+    examined: rows.length,
+    inPopulation: rows.filter((r) => r.card).length,
+    tested: tested.length,
+    flagged: flagged.length,
+    weak: rows.filter((r) => r.weak).length,
+    flaggedVolumeShare: flagged.reduce((s, r) => s + r.share, 0),
+    baseRate: pop.result.baseRate,
+    expected: test.expected,
+    p: test.p,
+    verdict: test.verdict as ParticipationVerdict,
+  };
 }
 
 export async function integrityReport(condition: string) {
   const m = await loadMarket(condition),
-    { test, listed, listingSource } = analyze(m),
-    records = (await readLibrary()).filter((r) => r.condition !== m.meta.condition),
-    check = records.length ? await methodCheck() : null;
-  const categoryCalibration = m.meta.category ? check?.randomTime.categories[m.meta.category] : undefined;
-  const calibrated = categoryCalibration?.calibrated ?? null;
-  const comparable = records
-    .filter(
-      (r) =>
-        r.category === m.meta.category &&
-        r.test.verdict !== "not-testable" &&
-        r.test.scoreType === test.scoreType &&
-        r.test.preScore !== null,
-    )
-    .map((r) => r.test.preScore!);
-  // A market below the floor has no comparable set: the library only holds larger markets.
-  const belowFloor = !meetsVolumeFloor(m.meta.volumeUsd);
-  const pct =
-    test.preScore !== null && m.meta.category && !belowFloor
-      ? percentile(test.preScore, comparable)
-      : { percentile: null, compared: 0 };
-  const wallets = runWalletCheck(
-    listed,
-    new Set([m.meta.event]),
-    records,
-    check?.fakeWallet.correction ?? "BH",
-    check?.fakeWallet.falseFlagRate ?? null,
-  );
+    { test } = analyze(m),
+    pop = await walletPopulation(),
+    records = await readLibrary(),
+    check = records.length ? await methodCheck() : null,
+    people = participants(m.allSides);
+  const part = participation(pop, people.wallets, people.total, m.meta.event);
   const s = m.series;
-  const chart =
-    s && test.move
-      ? {
-          firstHour: s.firstHour,
-          yes: s.yes,
-          moveHour: test.move.hour,
-        }
-      : s
-        ? { firstHour: s.firstHour, yes: s.yes, moveHour: null }
-        : null;
+  const chart = s ? { firstHour: s.firstHour, yes: s.yes, moveHour: test.move ? test.move.hour : null } : null;
+  const categoryCalibration = m.meta.category ? check?.randomTime.categories[m.meta.category] : undefined;
   return {
-    method: METHOD_ID,
+    method: WALLET_METHOD_ID,
+    contextMethod: METHOD_ID,
     generatedAt: new Date().toISOString(),
     market: {
       condition: m.meta.condition,
@@ -576,63 +678,55 @@ export async function integrityReport(condition: string) {
       closedTime: m.meta.closedTime,
       volumeUsd: m.meta.volumeUsd,
     },
-    test,
-    calibrated,
-    categoryFalseAlarmRate: categoryCalibration?.rate ?? null,
-    comparison: { ...pct, belowFloor },
-    wallets,
-    chart,
-    coverage: {
-      ...m.coverage,
-      listingSource,
-      warnings: [
-        ...m.coverage.warnings,
-        ...(listingSource === "taker-only"
-          ? ["The all-sides tape does not reach the pre-move window, so wallets are listed by aggressive (taker) flow only; maker fills are missing from their net dollars."]
-          : []),
-      ],
+    participation: part,
+    population: {
+      markets: pop.records,
+      wallets: pop.index.size,
+      tested: pop.result.tested,
+      m: pop.result.family1.m,
+      cutoff: pop.result.family1.cutoff,
+      primary: pop.result.primary,
+      empiricalFdr: pop.placeboA.fdr,
     },
-    library: { markets: records.length },
-    headline: headline(test, calibrated, pct.percentile, pct.compared, wallets, belowFloor),
+    // Pre-move buying test (Market Integrity Search), shown as context only.
+    test,
+    categoryFalseAlarmRate: categoryCalibration?.rate ?? null,
+    chart,
+    coverage: m.coverage,
+    headline: headline(part, pop),
   };
 }
 
-function headline(
-  test: MarketTest,
-  calibrated: boolean | null,
-  pct: number | null,
-  compared: number,
-  wallets: WalletCheckResult,
-  belowFloor = false,
-) {
-  const parts: string[] = [];
-  if (test.verdict === "not-testable") parts.push(test.reason);
-  else if (calibrated === false) parts.push("Market test not calibrated for this category; only the comparison and wallet check are shown.");
-  else parts.push(test.verdict === "unusual" ? `Unusual pre-move buying (p = ${test.p!.toFixed(3)}).` : `Nothing unusual detected (p = ${test.p!.toFixed(3)}).`);
-  if (pct !== null) parts.push(`More one-sided than ${Math.round(pct * 100)}% of ${compared} comparable markets.`);
-  else if (belowFloor && test.preScore !== null)
-    parts.push(`Below the library's $${SETTINGS.library.minVolumeUsd.toLocaleString()} volume floor, so there is no comparable set.`);
-  const flagged = wallets.rows.filter((r) => r.label === "unusual-record").length;
-  if (wallets.rows.length) parts.push(`${flagged} of ${wallets.rows.length} top pre-move buyers ${flagged === 1 ? "has" : "have"} an unusual record elsewhere.`);
-  parts.push("This is an anomaly screen, not an accusation.");
+function headline(part: ReturnType<typeof participation>, pop: Population) {
+  const fdr = pop.placeboA.fdr;
+  const parts = [
+    part.verdict === "not-testable"
+      ? `Only ${part.tested} of the ${part.examined} largest participants have testable records (at least ${WALLET_SETTINGS.market.minTestedParticipants} needed).`
+      : `${part.flagged} of ${part.tested} tested participants have anomalous records elsewhere, against ${part.expected.toFixed(1)} expected from the population rate (p = ${part.p!.toPrecision(2)}).`,
+  ];
+  if (part.flagged) parts.push(`They traded ${(part.flaggedVolumeShare * 100).toFixed(1)}% of the market's volume.`);
+  if (fdr !== null) parts.push(`Measured false-flag rate ${(fdr * 100).toFixed(1)}%.`);
+  parts.push("Statistical anomaly under market odds; consistent with skill, speed, or information. Not an accusation.");
   return parts.join(" ");
 }
 
 /* --------------------------------------------------------- multi-market */
 
 export async function multiReport(input: { conditions?: string[]; category?: CategoryId; from?: string; to?: string }) {
-  const library = await readLibrary();
-  let targets: { condition: string; test: MarketTest; event: string; title: string; listed: { wallet: string; netUsd: number | null }[]; category: CategoryId | null; volumeUsd: number | null }[] = [];
+  const library = await readLibrary(),
+    pop = await walletPopulation();
+  type Target = { condition: string; title: string; event: string; category: CategoryId | null; test: MarketTest; people: { wallet: string; usd: number }[]; total: number };
+  let targets: Target[] = [];
   if (input.conditions?.length) {
     for (const c of input.conditions.map((x) => x.toLowerCase())) {
       const rec = library.find((r) => r.condition === c);
       if (rec) {
-        targets.push({ condition: c, test: rec.test, event: rec.event, title: rec.title, listed: rec.listed, category: rec.category, volumeUsd: rec.volumeUsd });
+        targets.push({ condition: c, title: rec.title, event: rec.event, category: rec.category, test: rec.test, people: rec.participants, total: rec.participantVolume });
         continue;
       }
       const m = await loadMarket(c),
-        a = analyze(m);
-      targets.push({ condition: c, test: a.test, event: m.meta.event, title: m.meta.title, listed: a.listed, category: m.meta.category, volumeUsd: m.meta.volumeUsd });
+        people = participants(m.allSides);
+      targets.push({ condition: c, title: m.meta.title, event: m.meta.event, category: m.meta.category, test: analyze(m).test, people: people.wallets, total: people.total });
     }
   } else if (input.category) {
     const from = input.from ? Date.parse(input.from) / 1000 : -Infinity,
@@ -643,81 +737,43 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
         const t = parseTime(r.closedTime) ?? 0;
         return t >= from && t < to;
       })
-      .map((r) => ({ condition: r.condition, test: r.test, event: r.event, title: r.title, listed: r.listed, category: r.category, volumeUsd: r.volumeUsd }));
+      .map((r) => ({ condition: r.condition, title: r.title, event: r.event, category: r.category, test: r.test, people: r.participants, total: r.participantVolume }));
   }
   if (!targets.length) throw new DataError("No markets matched this search.", 404);
-  const check = library.length ? await methodCheck() : null;
-  const multi = multiMarket(targets.map((t) => ({ condition: t.condition, test: t.test })));
-  const excluded = new Set(targets.map((t) => t.event));
-  const wallets = new Map<string, { wallet: string; netUsd: number | null; markets: string[] }>();
-  for (const t of targets)
-    for (const l of t.listed) {
-      const w = wallets.get(l.wallet);
-      if (w) {
-        w.markets.push(t.condition);
-        w.netUsd = (w.netUsd ?? 0) + (l.netUsd ?? 0);
-      } else wallets.set(l.wallet, { ...l, markets: [t.condition] });
-    }
-  const others = library.filter((r) => !targets.some((t) => t.condition === r.condition));
-  const walletGroup = runWalletCheck(
-    [...wallets.values()],
-    excluded,
-    others,
-    check?.fakeWallet.correction ?? "BH",
-    check?.fakeWallet.falseFlagRate ?? null,
-  );
-  const flaggedByMarket = new Map<string, number>();
-  for (const r of walletGroup.rows)
-    if (r.label === "unusual-record")
-      for (const c of wallets.get(r.wallet)!.markets) flaggedByMarket.set(c, (flaggedByMarket.get(c) || 0) + 1);
-  const byCondition = new Map(targets.map((t) => [t.condition, t]));
+  const rows = targets.map((t) => ({ t, part: participation(pop, t.people, t.total, t.event) }));
+  // BH across the testable markets' participation p-values.
+  const testable = rows.filter((r) => r.part.p !== null),
+    bh = benjaminiHochberg(testable.map((r) => r.part.p!));
+  const q = new Map<string, { q: number; flagged: boolean }>();
+  testable.forEach((r, i) => q.set(r.t.condition, { q: bh.q[i], flagged: bh.rejected[i] }));
   return {
-    method: METHOD_ID,
+    method: WALLET_METHOD_ID,
     generatedAt: new Date().toISOString(),
-    M: multi.M,
-    mSteps: multi.mSteps,
-    threshold: multi.threshold,
-    rows: multi.rows.map((r) => {
-      const t = byCondition.get(r.condition)!,
-        comparable = library
-          .filter((x) => x.condition !== r.condition && x.category === t.category && x.test.verdict !== "not-testable" && x.test.scoreType === r.test.scoreType)
-          .map((x) => x.test.preScore!);
-      const belowFloor = !meetsVolumeFloor(t.volumeUsd);
-      const pct =
-        r.test.preScore !== null && t.category && !belowFloor
-          ? percentile(r.test.preScore, comparable)
-          : { percentile: null, compared: 0 };
-      return {
-        condition: r.condition,
-        title: t.title,
-        category: t.category,
-        status: r.status,
-        verdict:
-          r.status === "not-testable"
-            ? "not-testable"
-            : r.status === "history-too-short"
-              ? "history-too-short"
-              : r.flagged
-                ? "unusual"
-                : "nothing-unusual",
-        reason: r.status === "history-too-short" ? "History too short for a group this size." : r.test.reason,
-        p: r.test.p,
-        q: r.q,
-        comparisonWindows: r.test.comparisonWindows,
-        percentile: pct.percentile,
-        compared: pct.compared,
-        flaggedWallets: flaggedByMarket.get(r.condition) || 0,
-        belowFloor,
-      };
-    }),
-    wallets: { ...walletGroup, rows: walletGroup.rows.map((r) => ({ ...r, markets: wallets.get(r.wallet)!.markets })) },
+    M: testable.length,
+    threshold: bh.threshold,
+    baseRate: pop.result.baseRate,
+    empiricalFdr: pop.placeboA.fdr,
+    rows: rows
+      .map(({ t, part }) => {
+        const corrected = q.get(t.condition);
+        return {
+          condition: t.condition,
+          title: t.title,
+          category: t.category,
+          verdict: (part.p === null ? "not-testable" : corrected?.flagged ? "elevated" : "typical") as ParticipationVerdict,
+          examined: part.examined,
+          tested: part.tested,
+          flagged: part.flagged,
+          weak: part.weak,
+          expected: part.expected,
+          flaggedVolumeShare: part.flaggedVolumeShare,
+          p: part.p,
+          q: corrected?.q ?? null,
+          preMoveP: t.test.p,
+        };
+      })
+      .sort((a, b) => (a.q ?? 2) - (b.q ?? 2)),
   };
-}
-
-/** Price-bucket calibration from the library, or null before any library bets exist. */
-export async function libraryCalibration() {
-  const bets = (await readLibrary()).flatMap((r) => r.bets);
-  return bets.length ? calibrate(bets) : null;
 }
 
 export type IntegrityReport = Awaited<ReturnType<typeof integrityReport>>;
