@@ -30,15 +30,15 @@ export function Sparkline({ points, id }: { points: number[]; id: number }) {
     >
       <defs>
         <linearGradient id={`spark-${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3c9d75" stopOpacity=".14" />
-          <stop offset="100%" stopColor="#3c9d75" stopOpacity="0" />
+          <stop offset="0%" stopColor="#114bdf" stopOpacity=".14" />
+          <stop offset="100%" stopColor="#114bdf" stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={`${line} L112,42 L0,42 Z`} fill={`url(#spark-${id})`} />
       <path
         d={line}
         fill="none"
-        stroke="#399372"
+        stroke="#114bdf"
         strokeWidth="1.7"
         strokeLinecap="round"
         strokeLinejoin="round"

@@ -18,7 +18,7 @@ export default function PriceTimeline({
     last = points.at(-1)!.timestamp,
     x = (t: number) => 55 + ((t - first) / (last - first || 1)) * 610,
     y = (p: number) => 185 - p * 155;
-  const colors = ["#3c8e70", "#c49a62"];
+  const colors = ["#114bdf", "#c49a62"];
   return (
     <div className="market-price-chart">
       <div className="price-chart-legend">
@@ -43,7 +43,7 @@ export default function PriceTimeline({
               x2="665"
               y1={y(p)}
               y2={y(p)}
-              stroke="#e7eee3"
+              stroke="#e6e8eb"
               strokeDasharray="4 5"
             />
             <text x="42" y={y(p) + 4} textAnchor="end">

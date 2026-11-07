@@ -238,8 +238,15 @@ export async function getMarketBundle(
           "No saved snapshot is available for this market.",
           404,
         );
+      // Gamma omits closed markets unless closed=true is passed, so ask for both.
       const [metadata, tape] = await Promise.allSettled([
-        gamma("markets", { condition_ids: condition }),
+        Promise.all([
+          gamma("markets", { condition_ids: condition }).catch(() => []),
+          gamma("markets", { condition_ids: condition, closed: "true" }).catch(() => []),
+        ]).then(([open, closed]) => [
+          ...(Array.isArray(open) ? open : []),
+          ...(Array.isArray(closed) ? closed : []),
+        ]),
         fetchConditionRecords(condition),
       ]);
       if (tape.status === "rejected") throw tape.reason;

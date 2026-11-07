@@ -49,7 +49,7 @@ export function ProfitChart({ points }: { points: PnlPoint[] }) {
                 x2="690"
                 y1={y(v)}
                 y2={y(v)}
-                stroke="#e7eee7"
+                stroke="#e9eaec"
                 strokeDasharray="4 5"
               />
               <text x="52" y={y(v) + 4} textAnchor="end">
@@ -63,7 +63,7 @@ export function ProfitChart({ points }: { points: PnlPoint[] }) {
             key={i}
             d={d}
             fill="none"
-            stroke="#39856a"
+            stroke="#114bdf"
             strokeWidth="2.2"
             strokeLinejoin="round"
           />
@@ -115,7 +115,7 @@ export function WinsChart({ record: r }: { record: RecordTest }) {
         <title>Wins expected by luck alone (exact Poisson-binomial)</title>
         {[0, 0.5, 1].map((t) => (
           <g key={t}>
-            <line x1="65" x2="690" y1={200 - t * 145} y2={200 - t * 145} stroke="#e7eee7" strokeDasharray="4 5" />
+            <line x1="65" x2="690" y1={200 - t * 145} y2={200 - t * 145} stroke="#e9eaec" strokeDasharray="4 5" />
             <text x="53" y={204 - t * 145} textAnchor="end">
               {fmt(t * max)}
             </text>
@@ -129,15 +129,15 @@ export function WinsChart({ record: r }: { record: RecordTest }) {
             width={Math.max(1, bw - 2)}
             height={(v / max) * 145}
             rx="2"
-            fill={k >= r.wins ? "#9aaf80" : "#bdd6c8"}
+            fill={k >= r.wins ? "#8b93a4" : "#c3c7d0"}
           >
             <title>
               {k} wins: {fmt(v)}
             </title>
           </rect>
         ))}
-        <line x1={x(r.wins) + bw / 2} x2={x(r.wins) + bw / 2} y1="31" y2="205" stroke="#4c755b" strokeWidth="2" strokeDasharray="5 4" />
-        <circle cx={x(r.wins) + bw / 2} cy="30" r="4" fill="#356f52" />
+        <line x1={x(r.wins) + bw / 2} x2={x(r.wins) + bw / 2} y1="31" y2="205" stroke="#555d6c" strokeWidth="2" strokeDasharray="5 4" />
+        <circle cx={x(r.wins) + bw / 2} cy="30" r="4" fill="#454e5f" />
         <text x={Math.max(130, Math.min(620, x(r.wins) + bw / 2))} y="17" textAnchor="middle" className="observed-label">
           Observed {r.wins} wins
         </text>

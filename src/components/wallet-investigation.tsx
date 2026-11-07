@@ -19,7 +19,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { Logo } from "./visuals";
+import { SiteHeader } from "./app-frame";
 import { ProfitChart, WinsChart } from "./audit-charts";
 import { RECORD_LABELS } from "@/lib/analysis";
 import WalletPrimaryMarkets from "./wallet-primary-markets";
@@ -205,26 +205,8 @@ export default function WalletInvestigation({
     );
   }
   return (
-    <div className="investigation-shell">
-      <header className="investigation-topbar">
-        <Link href="/" className="brand">
-          <Logo />
-          <span>LuckAudit</span>
-        </Link>
-        <Link href="/leaderboard" className="outline-button">
-          <ArrowLeft size={15} />
-          Leaderboard
-        </Link>
-        <a
-          className="platform-link"
-          href={`https://polymarket.com/profile/${address}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Polymarket profile
-          <ExternalLink size={13} />
-        </a>
-      </header>
+    <div className="site investigation-shell">
+      <SiteHeader active="wallet" />
       <main className="investigation-main">
         <div className="breadcrumbs">
           <Link href="/">Markets</Link>
@@ -254,6 +236,15 @@ export default function WalletInvestigation({
             </div>
           </div>
           <div className="heading-actions">
+            <a
+              className="text-button"
+              href={`https://polymarket.com/profile/${address}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Polymarket profile
+              <ExternalLink size={13} />
+            </a>
             <button
               className="outline-button"
               disabled={!data}

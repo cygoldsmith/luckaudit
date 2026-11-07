@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import Dialog from "@/components/dialog";
 import CompareWallets from "@/components/compare-wallets";
-import { Logo } from "@/components/visuals";
+import { SiteHeader } from "@/components/app-frame";
 import {
   compact,
   dateTime,
@@ -74,7 +74,6 @@ export default function Home() {
     saved: [] as Trader[],
     recent: [] as Trader[],
   });
-  const [mobile, setMobile] = useState(false);
   const [lookup, setLookup] = useState(false);
   const [address, setAddress] = useState("");
   const [addressError, setAddressError] = useState("");
@@ -149,7 +148,6 @@ export default function Home() {
   const rows = filtered.slice(currentPage * 10, (currentPage + 1) * 10);
   function navigate(next: View) {
     setView(next);
-    setMobile(false);
     setPage(0);
     setQuery("");
   }
@@ -229,148 +227,9 @@ export default function Home() {
     }
   }
   return (
-    <div className="app-shell">
-      {mobile ? (
-        <button
-          className="nav-scrim"
-          aria-label="Close navigation"
-          onClick={() => setMobile(false)}
-        />
-      ) : null}
-      <aside className={`sidebar ${mobile ? "is-open" : ""}`}>
-        <Link className="brand" href="/">
-          <Logo />
-          <span>LuckAudit</span>
-        </Link>
-        <div className="platform-label">
-          <AudioLines size={17} />
-          <span>Polymarket analytics</span>
-        </div>
-        <p className="nav-caption">ANALYTICS</p>
-        <nav aria-label="Main navigation">
-          <Link className="nav-item" href="/">
-            <Search size={18} />
-            <span>Market explorer</span>
-          </Link>
-          <button
-            className={`nav-item ${view === "explore" ? "active" : ""}`}
-            onClick={() => navigate("explore")}
-          >
-            <Compass size={18} />
-            <span>Leaderboard</span>
-          </button>
-          <button
-            className={`nav-item ${view === "watchlist" ? "active" : ""}`}
-            onClick={() => navigate("watchlist")}
-          >
-            <Bookmark size={18} />
-            <span>Watchlist</span>
-            <span className="nav-count">{store.saved.length}</span>
-          </button>
-          <button
-            className={`nav-item ${view === "recent" ? "active" : ""}`}
-            onClick={() => navigate("recent")}
-          >
-            <History size={18} />
-            <span>Recently viewed</span>
-            <span className="nav-count">{store.recent.length}</span>
-          </button>
-        </nav>
-        <div className="sidebar-divider" />
-        <p className="nav-caption">TOOLS</p>
-        <Link className="nav-item" href="/validation">
-          <BookOpen size={18} />
-          <span>Validation</span>
-        </Link>
-        <button
-          className="nav-item"
-          onClick={() => {
-            setLookup(true);
-            setMobile(false);
-          }}
-        >
-          <Wallet size={18} />
-          <span>Wallet lookup</span>
-          <kbd>⌘ K</kbd>
-        </button>
-        <button
-          className="nav-item"
-          disabled={loaded.length < 2}
-          onClick={() => setCompare(true)}
-        >
-          <ArrowLeftRight size={18} />
-          <span>Compare traders</span>
-        </button>
-        <button className="nav-item" onClick={exportData}>
-          <Download size={18} />
-          <span>Export data</span>
-        </button>
-        <div className="sidebar-bottom">
-          <div className="data-source-card">
-            <div>
-              <span className="tiny-dot" />
-              DATA SOURCE
-            </div>
-            <strong>
-              {board?.provenance.origin === "snapshot"
-                ? "Saved public snapshot"
-                : "Polymarket Data API"}
-            </strong>
-            <p>
-              {board
-                ? `${loaded.length} loaded traders`
-                : loading
-                  ? "Connecting…"
-                  : "Connection unavailable"}
-            </p>
-          </div>
-          <button className="nav-item" onClick={() => setMethodology(true)}>
-            <BookOpen size={18} />
-            <span>Methodology</span>
-            <ArrowUpRight size={14} />
-          </button>
-        </div>
-      </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumbs">
-            <button
-              className="icon-button mobile-menu"
-              aria-label="Open navigation"
-              aria-expanded={mobile}
-              onClick={() => setMobile(true)}
-            >
-              <Menu size={20} />
-            </button>
-            <span className="breadcrumb-root">Analytics</span>
-            <ChevronRight size={13} />
-            <span>
-              {view === "explore"
-                ? "Leaderboard"
-                : view === "watchlist"
-                  ? "Watchlist"
-                  : "Recently viewed"}
-            </span>
-          </div>
-          <div className="topbar-right">
-            <button
-              className="topbar-help"
-              onClick={() => setMethodology(true)}
-            >
-              <CircleHelp size={16} />
-              <span>Methodology</span>
-            </button>
-            <a
-              className="platform-link"
-              href="https://polymarket.com"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Polymarket
-              <ExternalLink size={13} />
-            </a>
-          </div>
-        </header>
+    <div className="site">
+      <SiteHeader active="leaderboard" />
+      <div className="site-main">
         <main>
           <div className="page-heading">
             <div>
@@ -397,6 +256,18 @@ export default function Home() {
               >
                 <ArrowLeftRight size={15} />
                 Compare traders
+              </button>
+            </div>
+          </div>
+          <div className="page-subnav">
+            <div className="page-subnav-actions">
+              <button className="text-button" onClick={() => setLookup(true)}>
+                <Wallet size={15} />
+                Wallet lookup
+              </button>
+              <button className="text-button" onClick={() => setMethodology(true)}>
+                <BookOpen size={15} />
+                Methodology
               </button>
             </div>
           </div>
@@ -544,6 +415,15 @@ export default function Home() {
                   >
                     <Bookmark size={15} />
                     Watchlist
+                    <span className="nav-count">{store.saved.length}</span>
+                  </button>
+                  <button
+                    className={view === "recent" ? "selected" : ""}
+                    onClick={() => navigate("recent")}
+                  >
+                    <History size={15} />
+                    Recently viewed
+                    <span className="nav-count">{store.recent.length}</span>
                   </button>
                 </div>
                 <div className="period-control" aria-label="Leaderboard period">
