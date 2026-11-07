@@ -220,7 +220,17 @@ async function writeJson(file: string, value: unknown) {
   await mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(temp, JSON.stringify(value));
-  await rename(temp, file);
+  // OneDrive and antivirus can briefly lock files on Windows; retry the swap.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(temp, file);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (attempt >= 8 || !["EPERM", "EBUSY", "EACCES"].includes(code ?? "")) throw e;
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    }
+  }
 }
 async function readJson<T>(file: string): Promise<T | null> {
   try {

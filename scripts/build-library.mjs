@@ -16,17 +16,25 @@ const post = async (body) => {
   return json;
 };
 if (args.includes("--discover")) console.log("discovered", await post({ action: "discover" }));
-let backoff = 60_000;
+let backoff = 60_000,
+  serverErrors = 0;
 for (;;) {
   let step;
   try {
     step = await post({ action: "step", count: batch });
     backoff = 60_000;
+    serverErrors = 0;
   } catch (e) {
     if ([429, 503].includes(e.status) || e.cause) {
       console.log(new Date().toISOString(), `paused: ${e.message}; retrying in ${backoff / 1000}s`);
       await sleep(backoff);
       backoff = Math.min(backoff * 2, 15 * 60_000);
+      continue;
+    }
+    // Steps are idempotent, so a transient server error (e.g. a locked file) is retried.
+    if (e.status >= 500 && ++serverErrors <= 10) {
+      console.log(new Date().toISOString(), `server error: ${e.message}; retry ${serverErrors}/10 in 15s`);
+      await sleep(15_000);
       continue;
     }
     throw e;
