@@ -155,11 +155,18 @@ export async function discoverMarkets(
         hasMore = false,
         usTitle = "";
       if (parsed.kind === "condition") {
-        const raw = await gamma("markets", { condition_ids: parsed.condition });
-        direct = Array.isArray(raw) ? raw : [];
+        // Gamma omits closed markets unless closed=true is passed, so ask for both.
+        const [open, closed] = await Promise.all([
+          gamma("markets", { condition_ids: parsed.condition }).catch(() => []),
+          gamma("markets", { condition_ids: parsed.condition, closed: "true" }).catch(() => []),
+        ]);
+        direct = [...(Array.isArray(open) ? open : []), ...(Array.isArray(closed) ? closed : [])];
       } else if (parsed.kind === "market") {
-        const raw = await gamma("markets", { slug: parsed.slug });
-        direct = Array.isArray(raw) ? raw : [];
+        const [open, closed] = await Promise.all([
+          gamma("markets", { slug: parsed.slug }).catch(() => []),
+          gamma("markets", { slug: parsed.slug, closed: "true" }).catch(() => []),
+        ]);
+        direct = [...(Array.isArray(open) ? open : []), ...(Array.isArray(closed) ? closed : [])];
       } else if (parsed.kind === "us-event") {
         // polymarket.us runs a separate order book whose trades are not in the
         // public Data API. Match it to the main exchange by its event title.

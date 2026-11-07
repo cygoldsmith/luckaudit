@@ -81,10 +81,12 @@ export function parseMarketQuery(
     throw new Error("Search text must be at most 300 characters.");
   if (isCondition(query))
     return { kind: "condition", condition: query.toLowerCase() };
-  if (/^https?:\/\//i.test(query)) {
+  // Accept links pasted without a scheme, e.g. "polymarket.com/event/…".
+  const link = /^(www\.)?polymarket\.(com|us)\//i.test(query) ? `https://${query}` : query;
+  if (/^https?:\/\//i.test(link)) {
     let url: URL;
     try {
-      url = new URL(query);
+      url = new URL(link);
     } catch {
       throw new Error("Enter a valid Polymarket link.");
     }

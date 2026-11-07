@@ -246,3 +246,10 @@ test("empty activity does not become a fairness or concentration finding", () =>
   assert.equal(a.participants.length, 0);
   assert.ok(a.signals[0].text.includes("No valid"));
 });
+
+test("links parse with or without a scheme, on polymarket.com and polymarket.us", () => {
+  assert.deepEqual(parseMarketQuery("polymarket.com/event/fed-decision"), { kind: "event", slug: "fed-decision", child: undefined });
+  assert.deepEqual(parseMarketQuery("www.polymarket.com/market/some-market?tid=1"), { kind: "market", slug: "some-market", child: undefined });
+  assert.deepEqual(parseMarketQuery("polymarket.us/event/usp-2028-11-07"), { kind: "us-event", slug: "usp-2028-11-07" });
+  assert.equal(parseMarketQuery("polymarket odds").kind, "text");
+});
