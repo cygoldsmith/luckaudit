@@ -91,9 +91,11 @@ export async function gamma(
   throw new DataError("Market discovery failed.");
 }
 /** Read a polymarket.us event's title from its page (og:title), stopping once found. */
-async function usEventTitle(slug: string): Promise<string | null> {
+async function usEventTitle(pagePath: string): Promise<string | null> {
+  // Only same-site paths made of slug segments (validated by parseMarketQuery).
+  if (!/^(\/[-a-zA-Z0-9]+)+\/?$/.test(pagePath)) return null;
   try {
-    const r = await fetch(`https://polymarket.us/event/${encodeURIComponent(slug)}`, {
+    const r = await fetch(`https://polymarket.us${pagePath}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(12000),
       headers: { Accept: "text/html" },
@@ -171,9 +173,12 @@ export async function discoverMarkets(
         // polymarket.us runs a separate order book whose trades are not in the
         // public Data API. Match it to the main exchange by its event title.
         const shared = await gamma("events", { slug: parsed.slug }).catch(() => []);
-        if (Array.isArray(shared) && shared.length) events = shared;
+        if (Array.isArray(shared) && shared.length) {
+          events = shared;
+          usTitle = String(object(shared[0]).title || parsed.slug);
+        }
         else {
-          const title = await usEventTitle(parsed.slug);
+          const title = await usEventTitle(parsed.path);
           if (!title)
             throw new DataError("That polymarket.us event could not be read. Search its title instead.", 404);
           usTitle = title;

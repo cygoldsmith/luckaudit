@@ -250,6 +250,12 @@ test("empty activity does not become a fairness or concentration finding", () =>
 test("links parse with or without a scheme, on polymarket.com and polymarket.us", () => {
   assert.deepEqual(parseMarketQuery("polymarket.com/event/fed-decision"), { kind: "event", slug: "fed-decision", child: undefined });
   assert.deepEqual(parseMarketQuery("www.polymarket.com/market/some-market?tid=1"), { kind: "market", slug: "some-market", child: undefined });
-  assert.deepEqual(parseMarketQuery("polymarket.us/event/usp-2028-11-07"), { kind: "us-event", slug: "usp-2028-11-07" });
+  assert.deepEqual(parseMarketQuery("polymarket.us/event/usp-2028-11-07"), { kind: "us-event", slug: "usp-2028-11-07", path: "/event/usp-2028-11-07" });
+  assert.deepEqual(parseMarketQuery("https://polymarket.us/sports/cfb/cfb-ore-ohiost-2026-11-07"), {
+    kind: "us-event",
+    slug: "cfb-ore-ohiost-2026-11-07",
+    path: "/sports/cfb/cfb-ore-ohiost-2026-11-07",
+  });
+  assert.deepEqual(parseMarketQuery("https://polymarket.com/sports/nfl/nfl-buf-kc-2026-11-08"), { kind: "event", slug: "nfl-buf-kc-2026-11-08", child: undefined });
   assert.equal(parseMarketQuery("polymarket odds").kind, "text");
 });
