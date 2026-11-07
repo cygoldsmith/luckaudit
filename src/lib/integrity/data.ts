@@ -777,3 +777,37 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
 }
 
 export type IntegrityReport = Awaited<ReturnType<typeof integrityReport>>;
+
+/* ------------------------------------------- parallel build primitives */
+
+/** Candidates not yet built or failed, in library order. */
+export async function libraryTodo() {
+  const index = await readJson<LibraryIndex>(indexFile());
+  if (!index) throw new DataError("Discover the library first.", 409);
+  const built = new Set((await libraryFiles()).map((f) => f.slice(0, -".json.gz".length)));
+  return {
+    candidates: index.candidates.length,
+    built: index.candidates.filter((c) => built.has(c.condition)).length,
+    failed: Object.keys(index.failed).length,
+    todo: index.candidates.filter((c) => !built.has(c.condition) && !index.failed[c.condition]),
+  };
+}
+
+/** Build and save one library market. Throws on failure; the caller decides retry vs fail. */
+export async function buildLibraryMarket(c: IntegrityMarketMeta) {
+  const m = await loadMarket(c.condition, c);
+  try {
+    await writeJson(path.join(libDir, `${c.condition}.json.gz`), toRecord(m));
+  } finally {
+    loaded.delete(c.condition);
+  }
+}
+
+/** Record permanent failures (single writer). */
+export async function recordLibraryFailures(failures: Record<string, string>) {
+  if (!Object.keys(failures).length) return;
+  const index = await readJson<LibraryIndex>(indexFile());
+  if (!index) return;
+  Object.assign(index.failed, failures);
+  await writeJson(indexFile(), index);
+}
