@@ -169,14 +169,35 @@ export default function MarketInvestigation({
           <span>Investigation</span>
         </div>
         <div className="page-heading market-page-heading">
-          <div>
-            <div className="eyebrow">MARKET ACTIVITY AUDIT</div>
-            <h1>{market?.title || "Market investigation"}</h1>
-            <p>
-              {market
-                ? `${market.closed ? "Closed" : market.active ? "Active" : "Status unavailable"} · ${market.tags.join(" · ") || "Public trading records"}`
-                : "Retrieving market metadata and the trade tape"}
-            </p>
+          <div className="pm-market-title">
+            {market?.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="pm-thumb large" src={market.image} alt="" />
+            ) : (
+              <span className="pm-thumb large" aria-hidden="true" />
+            )}
+            <div>
+              <h1>{market?.title || "Market investigation"}</h1>
+              <p>
+                {market
+                  ? `${market.closed ? "Resolved" : market.active ? "Live" : "Status unavailable"} · ${market.tags.join(" · ") || "Public trading records"}`
+                  : "Retrieving market metadata and the trade tape"}
+              </p>
+              {market && market.outcomes[0]?.price != null ? (
+                <div className="pm-chance">
+                  {market.closed && (market.outcomes[0].price >= 0.99 || market.outcomes[0].price <= 0.01) ? (
+                    <strong className={market.outcomes[0].price >= 0.99 ? "positive" : "negative"}>
+                      Resolved {market.outcomes[0].price >= 0.99 ? market.outcomes[0].label : market.outcomes[1]?.label}
+                    </strong>
+                  ) : (
+                    <>
+                      <strong>{Math.round(market.outcomes[0].price * 100)}%</strong>
+                      <span>chance · {market.outcomes[0].label}</span>
+                    </>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="heading-actions">
             <button

@@ -49,6 +49,10 @@ export function normalizeMarket(
       .map((t) => text(object(t).label))
       .filter((t) => t && t !== "All"),
     description: text(m.description).slice(0, 3000),
+    image: (() => {
+      const url = text(m.icon || m.image || parent.icon || parent.image);
+      return /^https:\/\//.test(url) ? url : null;
+    })(),
     active: m.active === true && m.closed !== true,
     closed: m.closed === true,
     endTime: Number.isFinite(Date.parse(rawTime)) ? rawTime : null,

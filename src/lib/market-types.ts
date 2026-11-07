@@ -8,6 +8,8 @@ export interface MarketInfo {
   eventTitle: string;
   tags: string[];
   description: string;
+  /** Market or event image (https only), or null. */
+  image?: string | null;
   active: boolean;
   closed: boolean;
   endTime: string | null;

@@ -14,11 +14,49 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
-import AppFrame from "@/components/app-frame";
+import AppFrame, { SEARCH_EVENT } from "@/components/app-frame";
 import { requestJson } from "@/lib/client";
 import { compact, dateTime, money } from "@/lib/domain";
 import { parseMarketQuery } from "@/lib/market-normalize";
 import type { MarketCatalogue } from "@/lib/market-types";
+const TOPICS: [string, string][] = [
+  ["Trending", ""],
+  ["Politics", "Politics"],
+  ["Elections", "Elections"],
+  ["Fed", "Federal Reserve"],
+  ["Economy", "Economy"],
+  ["Awards", "Awards"],
+  ["Tech", "Tech"],
+  ["Crypto", "Bitcoin"],
+  ["Sports", "Champions League"],
+];
+
+/** Polymarket-style prices: whole cents, with <1¢ and >99¢ at the extremes. */
+const cents = (price: number | null) =>
+  price === null ? "—" : price > 0 && price < 0.01 ? "<1¢" : price < 1 && price > 0.99 ? ">99¢" : `${Math.round(price * 100)}¢`;
+
+/** Polymarket-style half-circle chance gauge for the first outcome. */
+function ChanceGauge({ value }: { value: number | null }) {
+  if (value === null) return <span className="pm-gauge" />;
+  const pct = Math.round(value * 100),
+    label = value > 0 && value < 0.01 ? "<1%" : value < 1 && value > 0.99 ? ">99%" : `${pct}%`,
+    arc = Math.PI * 22;
+  return (
+    <span className="pm-gauge" aria-label={`${label} chance`}>
+      <svg viewBox="0 0 56 32" aria-hidden="true">
+        <path d="M6 28 A22 22 0 0 1 50 28" className="track" />
+        <path
+          d="M6 28 A22 22 0 0 1 50 28"
+          className={pct >= 50 ? "fill high" : "fill low"}
+          strokeDasharray={`${(arc * value).toFixed(2)} ${arc.toFixed(2)}`}
+        />
+      </svg>
+      <strong>{label}</strong>
+      <small>chance</small>
+    </span>
+  );
+}
+
 export default function MarketExplorer() {
   const router = useRouter();
   const [input, setInput] = useState(""),
@@ -65,6 +103,15 @@ export default function MarketExplorer() {
       });
     return () => c.abort();
   }, [query, state, refresh]);
+  useEffect(() => {
+    const initial = new URLSearchParams(window.location.search).get("q");
+    if (initial) search(initial);
+    const listener = (e: Event) => search(String((e as CustomEvent).detail || ""));
+    window.addEventListener(SEARCH_EVENT, listener);
+    return () => window.removeEventListener(SEARCH_EVENT, listener);
+    // search only reads setters and stable helpers
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   function search(value: string) {
     setInputError("");
     let parsed: ReturnType<typeof parseMarketQuery>;
@@ -96,84 +143,32 @@ export default function MarketExplorer() {
   return (
     <AppFrame active="markets">
       <main>
-        <div className="page-heading">
-          <div>
-            <h1>Market explorer</h1>
-            <p>
-              Find a market. Inspect its activity. Follow the traders behind it.
-            </p>
-          </div>
-          <Link className="outline-button" href="/leaderboard">
-            Trader leaderboard
-            <ArrowUpRight size={14} />
-          </Link>
-        </div>
-        <section className="market-search-panel">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              search(input);
-            }}
-          >
-            <label htmlFor="market-search">
-              Search a market or paste a Polymarket link
-            </label>
-            <div className={`wallet-search ${inputError ? "has-error" : ""}`}>
-              <Search size={19} />
-              <input
-                id="market-search"
-                value={input}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  setInputError("");
-                }}
-                placeholder="Market title, topic, or polymarket.com/event/…"
-                autoComplete="off"
-              />
-              <button type="submit">
-                Search markets
-                <ArrowRight size={15} />
-              </button>
-            </div>
-            {inputError ? (
-              <p className="field-error" role="alert">
-                {inputError}
-              </p>
-            ) : null}
-          </form>
-          <div className="saved-market-case">
-            <Link href="/market/0x9db8905bffc0df478b336591504245614c631976329df65efd7609f32167a693?snapshot=1">
-              Open a saved real-market case
-              <ArrowUpRight size={12} />
-            </Link>
-            <span>Recorded Fed rate-hike market · labeled snapshot</span>
-          </div>
-          <div className="search-suggestions">
-            <span>Explore</span>
-            {[
-              "US election",
-              "Federal Reserve",
-              "Bitcoin",
-              "Champions League",
-            ].map((value) => (
-              <button key={value} onClick={() => search(value)}>
-                {value}
-                <ArrowUpRight size={11} />
+        <nav className="pm-topics" aria-label="Topics">
+          {TOPICS.map(([label, value]) => (
+            <button
+              key={label}
+              className={query === value ? "selected" : ""}
+              aria-pressed={query === value}
+              onClick={() => (value ? search(value) : search(""))}
+            >
+              {label}
+            </button>
+          ))}
+          {recent
+            .filter((r) => !TOPICS.some(([, v]) => v === r))
+            .slice(0, 3)
+            .map((value) => (
+              <button key={`recent-${value}`} className="recent" onClick={() => search(value)}>
+                <Clock3 size={12} />
+                {value.length > 28 ? value.slice(0, 26) + "…" : value}
               </button>
             ))}
-          </div>
-          {recent.length ? (
-            <div className="recent-market-searches">
-              <Clock3 size={12} />
-              <span>Recent</span>
-              {recent.slice(0, 3).map((value) => (
-                <button key={value} onClick={() => search(value)}>
-                  {value.length > 38 ? value.slice(0, 35) + "…" : value}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </section>
+        </nav>
+        {inputError ? (
+          <p className="field-error" role="alert">
+            {inputError}
+          </p>
+        ) : null}
         <div className="section-title">
           <div>
             <h2>
@@ -271,74 +266,37 @@ export default function MarketExplorer() {
           <>
             <div className="market-grid">
               {catalogue.markets.slice(0, visible).map((m) => (
-                <article className="market-card" key={m.condition}>
-                  <div className="market-card-meta">
-                    <span
-                      className={`market-state ${m.closed ? "closed" : ""}`}
-                    >
-                      {m.closed
-                        ? "Closed"
-                        : m.active
-                          ? "Active"
-                          : "Status unavailable"}
-                    </span>
-                    <span>
-                      {m.tags
-                        .filter(
-                          (t) => !["all", "games"].includes(t.toLowerCase()),
-                        )
-                        .slice(0, 2)
-                        .join(" · ") || "Prediction market"}
-                    </span>
-                  </div>
-                  <Link
-                    href={`/market/${m.condition}`}
-                    className="market-question"
-                  >
-                    {m.title}
-                    <ArrowUpRight size={15} />
+                <article className="market-card pm-card" key={m.condition}>
+                  <Link href={`/market/${m.condition}`} className="pm-card-head">
+                    {m.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img className="pm-thumb" src={m.image} alt="" loading="lazy" />
+                    ) : (
+                      <span className="pm-thumb" aria-hidden="true" />
+                    )}
+                    <span className="market-question">{m.title}</span>
+                    <ChanceGauge value={m.outcomes[0]?.price ?? null} />
                   </Link>
-                  {m.eventTitle !== m.title ? (
-                    <p className="market-parent-title">{m.eventTitle}</p>
-                  ) : (
-                    <p className="market-parent-title">
-                      {m.endTime
-                        ? `Scheduled end ${dateTime(m.endTime)}`
-                        : "Scheduled end unavailable"}
-                    </p>
-                  )}
                   <div className="outcome-preview">
                     {m.outcomes.map((outcome, i) => (
                       <div key={i}>
                         <span>{outcome.label}</span>
                         <strong>
-                          {outcome.price === null
-                            ? "—"
-                            : `${(outcome.price * 100).toFixed(1)}%`}
+                          {cents(outcome.price)}
                         </strong>
                       </div>
                     ))}
                   </div>
-                  <div className="market-card-totals">
-                    <span>
-                      Reported volume
-                      <strong>
-                        {m.volumeUsd === null
-                          ? "—"
-                          : `$${compact(m.volumeUsd)}`}
-                      </strong>
+                  <div className="pm-card-foot">
+                    <span>{m.volumeUsd === null ? "—" : `$${compact(m.volumeUsd).toLowerCase()} Vol.`}</span>
+                    <span className={`market-state ${m.closed ? "closed" : ""}`}>
+                      {m.closed ? "Resolved" : m.active ? "Live" : "—"}
                     </span>
-                    <span>
-                      Reported liquidity<strong>{money(m.liquidityUsd)}</strong>
-                    </span>
+                    <Link className="market-investigate-link" href={`/market/${m.condition}`}>
+                      {m.closed ? "Integrity test" : "Investigate"}
+                      <ArrowRight size={13} />
+                    </Link>
                   </div>
-                  <Link
-                    className="market-investigate-link"
-                    href={`/market/${m.condition}`}
-                  >
-                    Investigate market
-                    <ArrowRight size={15} />
-                  </Link>
                 </article>
               ))}
             </div>
