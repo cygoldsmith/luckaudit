@@ -423,6 +423,13 @@ export async function buildLibraryStep(count = 3) {
       loaded.delete(c.condition);
       done.push(c.condition);
     } catch (e) {
+      // Rate limits and outages are transient: stop this step and retry the
+      // market later instead of dropping it from the library.
+      if (e instanceof DataError && [429, 503].includes(e.status)) {
+        await writeJson(indexFile(), index);
+        libraryCache = null;
+        throw e;
+      }
       index.failed[c.condition] = e instanceof Error ? e.message : "failed";
     }
   }
