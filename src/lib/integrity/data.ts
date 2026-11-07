@@ -48,8 +48,14 @@ export interface IntegrityMarketMeta {
   tokens: [string, string];
   outcomes: [string, string];
   closedTime: string | null;
+  /** Lifetime Gamma volume, USD. */
+  volumeUsd: number | null;
   resolution: Resolution;
 }
+
+/** Whether a market clears the library's volume floor (setting #1). */
+export const meetsVolumeFloor = (volumeUsd: number | null | undefined) =>
+  typeof volumeUsd === "number" && volumeUsd >= SETTINGS.library.minVolumeUsd;
 
 const list = (v: unknown): unknown[] => {
   if (Array.isArray(v)) return v;
@@ -106,6 +112,7 @@ export function metaFromGamma(rawMarket: unknown, rawEvent?: unknown): Integrity
     tokens: [tokens[0], tokens[1]],
     outcomes: [outcomes[0], outcomes[1]],
     closedTime,
+    volumeUsd: numeric(m.volumeNum ?? m.volume),
     resolution: {
       resolved,
       yesWon: resolved ? prices[0]! >= 0.99 : null,
@@ -203,6 +210,7 @@ export async function loadMarket(condition: string, known?: IntegrityMarketMeta)
 export interface LibraryRecord extends LibraryMarket {
   method: string;
   closedTime: string | null;
+  volumeUsd: number | null;
   bets: Bet[];
   warnings: string[];
   builtAt: string;
@@ -263,6 +271,7 @@ export function toRecord(m: LoadedMarket): LibraryRecord {
     title: m.meta.title,
     category: m.meta.category,
     closedTime: m.meta.closedTime,
+    volumeUsd: m.meta.volumeUsd,
     series: s && {
       firstHour: s.firstHour,
       yes: round(s.yes, 4),
@@ -294,7 +303,7 @@ export async function readLibrary(): Promise<LibraryRecord[]> {
     files = (await readdir(/* turbopackIgnore: true */ libDir)).filter((f) => f.endsWith(".json"));
   } catch {}
   const records = (await Promise.all(files.map((f) => readJson<LibraryRecord>(path.join(libDir, f))))).filter(
-    (r): r is LibraryRecord => !!r && r.method === METHOD_ID,
+    (r): r is LibraryRecord => !!r && r.method === METHOD_ID && meetsVolumeFloor(r.volumeUsd),
   );
   libraryCache = { at: Date.now(), records };
   return records;
@@ -354,7 +363,7 @@ export async function discoverLibrary() {
           for (const e of events)
             for (const rm of list(object(e).markets)) {
               const meta = metaFromGamma(rm, e);
-              if (!meta || !meta.resolution.resolved || seen.has(meta.condition)) continue;
+              if (!meta || !meta.resolution.resolved || !meetsVolumeFloor(meta.volumeUsd) || seen.has(meta.condition)) continue;
               const closedAt = parseTime(meta.closedTime);
               if (closedAt === null || closedAt * 1000 < now - SETTINGS.library.days * 86400_000) continue;
               seen.set(meta.condition, meta);
@@ -499,7 +508,12 @@ export async function integrityReport(condition: string) {
         r.test.preScore !== null,
     )
     .map((r) => r.test.preScore!);
-  const pct = test.preScore !== null && m.meta.category ? percentile(test.preScore, comparable) : { percentile: null, compared: 0 };
+  // A market below the floor has no comparable set: the library only holds larger markets.
+  const belowFloor = !meetsVolumeFloor(m.meta.volumeUsd);
+  const pct =
+    test.preScore !== null && m.meta.category && !belowFloor
+      ? percentile(test.preScore, comparable)
+      : { percentile: null, compared: 0 };
   const wallets = runWalletCheck(
     listed,
     new Set([m.meta.event]),
@@ -530,11 +544,12 @@ export async function integrityReport(condition: string) {
       outcomes: m.meta.outcomes,
       resolution: m.meta.resolution,
       closedTime: m.meta.closedTime,
+      volumeUsd: m.meta.volumeUsd,
     },
     test,
     calibrated,
     categoryFalseAlarmRate: categoryCalibration?.rate ?? null,
-    comparison: pct,
+    comparison: { ...pct, belowFloor },
     wallets,
     chart,
     coverage: {
@@ -548,7 +563,7 @@ export async function integrityReport(condition: string) {
       ],
     },
     library: { markets: records.length },
-    headline: headline(test, calibrated, pct.percentile, pct.compared, wallets),
+    headline: headline(test, calibrated, pct.percentile, pct.compared, wallets, belowFloor),
   };
 }
 
@@ -558,12 +573,15 @@ function headline(
   pct: number | null,
   compared: number,
   wallets: WalletCheckResult,
+  belowFloor = false,
 ) {
   const parts: string[] = [];
   if (test.verdict === "not-testable") parts.push(test.reason);
   else if (calibrated === false) parts.push("Market test not calibrated for this category; only the comparison and wallet check are shown.");
   else parts.push(test.verdict === "unusual" ? `Unusual pre-move buying (p = ${test.p!.toFixed(3)}).` : `Nothing unusual detected (p = ${test.p!.toFixed(3)}).`);
   if (pct !== null) parts.push(`More one-sided than ${Math.round(pct * 100)}% of ${compared} comparable markets.`);
+  else if (belowFloor && test.preScore !== null)
+    parts.push(`Below the library's $${SETTINGS.library.minVolumeUsd.toLocaleString()} volume floor, so there is no comparable set.`);
   const flagged = wallets.rows.filter((r) => r.label === "unusual-record").length;
   if (wallets.rows.length) parts.push(`${flagged} of ${wallets.rows.length} top pre-move buyers ${flagged === 1 ? "has" : "have"} an unusual record elsewhere.`);
   parts.push("This is an anomaly screen, not an accusation.");
@@ -574,17 +592,17 @@ function headline(
 
 export async function multiReport(input: { conditions?: string[]; category?: CategoryId; from?: string; to?: string }) {
   const library = await readLibrary();
-  let targets: { condition: string; test: MarketTest; event: string; title: string; listed: { wallet: string; netUsd: number | null }[]; category: CategoryId | null }[] = [];
+  let targets: { condition: string; test: MarketTest; event: string; title: string; listed: { wallet: string; netUsd: number | null }[]; category: CategoryId | null; volumeUsd: number | null }[] = [];
   if (input.conditions?.length) {
     for (const c of input.conditions.map((x) => x.toLowerCase())) {
       const rec = library.find((r) => r.condition === c);
       if (rec) {
-        targets.push({ condition: c, test: rec.test, event: rec.event, title: rec.title, listed: rec.listed, category: rec.category });
+        targets.push({ condition: c, test: rec.test, event: rec.event, title: rec.title, listed: rec.listed, category: rec.category, volumeUsd: rec.volumeUsd });
         continue;
       }
       const m = await loadMarket(c),
         a = analyze(m);
-      targets.push({ condition: c, test: a.test, event: m.meta.event, title: m.meta.title, listed: a.listed, category: m.meta.category });
+      targets.push({ condition: c, test: a.test, event: m.meta.event, title: m.meta.title, listed: a.listed, category: m.meta.category, volumeUsd: m.meta.volumeUsd });
     }
   } else if (input.category) {
     const from = input.from ? Date.parse(input.from) / 1000 : -Infinity,
@@ -595,7 +613,7 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
         const t = parseTime(r.closedTime) ?? 0;
         return t >= from && t < to;
       })
-      .map((r) => ({ condition: r.condition, test: r.test, event: r.event, title: r.title, listed: r.listed, category: r.category }));
+      .map((r) => ({ condition: r.condition, test: r.test, event: r.event, title: r.title, listed: r.listed, category: r.category, volumeUsd: r.volumeUsd }));
   }
   if (!targets.length) throw new DataError("No markets matched this search.", 404);
   const check = library.length ? await methodCheck() : null;
@@ -634,7 +652,11 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
         comparable = library
           .filter((x) => x.condition !== r.condition && x.category === t.category && x.test.verdict !== "not-testable" && x.test.scoreType === r.test.scoreType)
           .map((x) => x.test.preScore!);
-      const pct = r.test.preScore !== null && t.category ? percentile(r.test.preScore, comparable) : { percentile: null, compared: 0 };
+      const belowFloor = !meetsVolumeFloor(t.volumeUsd);
+      const pct =
+        r.test.preScore !== null && t.category && !belowFloor
+          ? percentile(r.test.preScore, comparable)
+          : { percentile: null, compared: 0 };
       return {
         condition: r.condition,
         title: t.title,
@@ -655,6 +677,7 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
         percentile: pct.percentile,
         compared: pct.compared,
         flaggedWallets: flaggedByMarket.get(r.condition) || 0,
+        belowFloor,
       };
     }),
     wallets: { ...walletGroup, rows: walletGroup.rows.map((r) => ({ ...r, markets: wallets.get(r.wallet)!.markets })) },

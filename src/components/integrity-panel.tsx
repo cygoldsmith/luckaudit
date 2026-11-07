@@ -119,7 +119,9 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
             <dt>Percentile</dt>
             <dd>
               {data.comparison.percentile === null
-                ? "—"
+                ? data.comparison.belowFloor
+                  ? "below floor"
+                  : "—"
                 : `${pct(data.comparison.percentile)} of ${data.comparison.compared}`}
             </dd>
           </div>

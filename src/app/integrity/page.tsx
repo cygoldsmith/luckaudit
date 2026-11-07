@@ -205,7 +205,13 @@ function MultiSearch() {
                       </td>
                       <td>{fmtP(r.p)}</td>
                       <td>{fmtP(r.q)}</td>
-                      <td>{r.percentile === null ? "—" : `${pct(r.percentile)} of ${r.compared}`}</td>
+                      <td>
+                        {r.percentile === null
+                          ? r.belowFloor
+                            ? "below $10k floor"
+                            : "—"
+                          : `${pct(r.percentile)} of ${r.compared}`}
+                      </td>
                       <td>{r.flaggedWallets}</td>
                     </tr>
                   ))}
@@ -429,7 +435,7 @@ function MethodCheck({ library }: { library: Library | null }) {
 function SettingsTable() {
   const s = SETTINGS;
   const rows: [string, string, string][] = [
-    ["Reference library", `Markets resolved in the last ${s.library.days} days: ${s.library.categories.map((c) => `${c.label} (${c.tagSlugs.join(", ")})`).join("; ")}`, "Topics where someone could know the answer early"],
+    ["Reference library", `Markets resolved in the last ${s.library.days} days with at least $${s.library.minVolumeUsd.toLocaleString()} lifetime volume: ${s.library.categories.map((c) => `${c.label} (${c.tagSlugs.join(", ")})`).join("; ")}`, "Topics where someone could know the answer early"],
     ["Big move", `Largest one-hour Yes change ≥ ${s.bigMove.minChange * 100} points, keeping ≥ ${s.bigMove.persistFraction * 100}% ${s.bigMove.persistHours} hours later (or resolving that way); no wallet > ${s.bigMove.maxSingleWalletShare * 100}% of the hour's dollars`, "A sudden, lasting jump is the footprint of news"],
     ["Pre-move window", `${s.windowHours} hours before the move`, "Close to the news, long enough to catch early buying"],
     ["Minimum history", `${s.minComparisonWindows} earlier ${s.windowHours}-hour windows`, "Fewer windows make the p-value too coarse"],

@@ -259,3 +259,22 @@ test("participant scan corrects the scanned wallets as one group", async () => {
   close(by.a.q!, 0.024, 1e-9);
   assert.equal(by.d.q, null);
 });
+
+test("library volume floor: Gamma volume is read and $10k is the cutoff", async () => {
+  const { metaFromGamma, meetsVolumeFloor } = await import("../src/lib/integrity/data");
+  const base = {
+    conditionId: "0x" + "1".repeat(64),
+    clobTokenIds: '["1","2"]',
+    outcomes: '["Yes","No"]',
+    outcomePrices: '["1","0"]',
+    closed: true,
+    closedTime: "2026-10-01 12:00:00+00",
+  };
+  const meta = metaFromGamma({ ...base, volumeNum: 12500.5 }, { id: 7, slug: "e", tags: [{ slug: "awards" }] })!;
+  assert.equal(meta.volumeUsd, 12500.5);
+  assert.equal(meta.category, "awards");
+  assert.equal(meta.resolution.yesWon, true);
+  assert.equal(meetsVolumeFloor(meta.volumeUsd), true);
+  assert.equal(meetsVolumeFloor(9999.99), false);
+  assert.equal(meetsVolumeFloor(null), false);
+});

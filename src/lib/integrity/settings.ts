@@ -22,9 +22,15 @@ export const DATA_CHECK = {
 };
 
 export const SETTINGS = {
-  /** #1 Reference library. Categories are assigned in this order by Gamma event tag slug. */
+  /**
+   * #1 Reference library. Categories are assigned in this order by Gamma event
+   * tag slug. Markets need at least minVolumeUsd of lifetime Gamma volume: most
+   * smaller markets are untraded placeholders that can never be tested. Volume
+   * does not look at which side won.
+   */
   library: {
     days: 180,
+    minVolumeUsd: 10_000,
     categories: [
       { id: "awards", label: "Awards", tagSlugs: ["awards"] },
       {
