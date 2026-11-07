@@ -27,7 +27,7 @@ test("statistical fallback is explicit and withholds unsupported conclusions", (
   const r = statisticalReport(b, auditWallet(b));
   assert.equal(r.mode, "statistical");
   assert.match(r.headline, /Too few qualifying bets/);
-  assert.ok(r.limitations.some((x) => x.includes("leaderboard")));
+  assert.ok(r.limitations.some((x) => x.includes("Benjamini")));
 });
 test("local model uses loopback structured output without an API key", async () => {
   const original = global.fetch;

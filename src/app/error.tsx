@@ -10,14 +10,14 @@ export default function ErrorPage({
     <main className="empty-state">
       <h1>This view couldn’t load</h1>
       <p>
-        Your saved traders remain in this browser. Retry the view or return to
-        the leaderboard.
+        Your saved wallets remain in this browser. Retry the view or return to
+        the markets.
       </p>
       <button className="primary-button" onClick={reset}>
         Try again
       </button>
       <Link className="outline-button" href="/">
-        Leaderboard
+        Markets
       </Link>
     </main>
   );

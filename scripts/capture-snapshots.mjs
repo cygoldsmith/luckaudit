@@ -36,13 +36,6 @@ await recordMarket(
   `market:${condition}`,
   (await get(`/api/market/${condition}?refresh=1`)).bundle,
 );
-const board = await get("/api/leaderboard?period=month&refresh=1");
-if (board.provenance.origin !== "live")
-  throw new Error("A live leaderboard is required to update the recording.");
-await writeFile(
-  new URL("board-month-overall-PNL.json", folder),
-  JSON.stringify(board),
-);
 for (const address of [
   "0x549b491ac7f6a675b56ff0a261d147daa73ac0ae",
   "0x4f1d5ae26fc31472966e951af3183308736d8de2",

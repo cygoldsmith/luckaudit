@@ -4,13 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowUpRight, Search } from "lucide-react";
 import { Logo } from "./visuals";
+import { parseWalletQuery } from "@/lib/wallet-lookup";
 
-export type Section = "markets" | "integrity" | "leaderboard" | "validation" | "wallet";
+export type Section = "markets" | "integrity" | "wallets" | "validation";
 
 const NAV: { id: Section; href: string; label: string }[] = [
   { id: "markets", href: "/", label: "Markets" },
   { id: "integrity", href: "/integrity", label: "Integrity search" },
-  { id: "leaderboard", href: "/leaderboard", label: "Leaderboard" },
+  { id: "wallets", href: "/wallets", label: "Wallet lookup" },
   { id: "validation", href: "/validation", label: "Validation" },
 ];
 
@@ -29,6 +30,10 @@ function HeaderSearch() {
         e.preventDefault();
         const q = value.trim();
         if (!q) return;
+        // Wallet addresses, @usernames and profile links go to wallet lookup.
+        const wallet = parseWalletQuery(q);
+        if (wallet?.kind === "address") return router.push(`/wallet/${wallet.address}`);
+        if (wallet?.kind === "username") return router.push(`/wallets?q=${encodeURIComponent(q)}`);
         if (pathname === "/") window.dispatchEvent(new CustomEvent(SEARCH_EVENT, { detail: q }));
         router.push(`/?q=${encodeURIComponent(q)}`);
       }}
@@ -37,7 +42,7 @@ function HeaderSearch() {
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Search markets or paste a Polymarket link"
+        placeholder="Search markets, paste a market link or a wallet"
         aria-label="Search markets"
         autoComplete="off"
       />

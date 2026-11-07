@@ -91,14 +91,7 @@ const statsSchema = z.object({
     .object({ realized_pnl: nullableNumber, economic_pnl: nullableNumber })
     .nullish(),
 });
-const leaderboardSchema = z.object({
-  rank: z.number(),
-  user_id: z.string().regex(/^0x[\da-f]{40}$/i),
-  pnl: nullableNumber,
-  volume: nullableNumber,
-  user_name: z.string(),
-  verified: z.boolean(),
-});
+
 const paginationSchema = z.object({
   has_more: z.boolean(),
   next_cursor: z.string().nullable(),
@@ -267,86 +260,6 @@ async function walk<T>(
     complete: false,
     warning: `${endpoint}: safety limit reached (${rows.length} records).`,
   };
-}
-
-export async function getLeaderboard(options: {
-  period: Period;
-  category: string;
-  order: "PNL" | "VOLUME";
-  cursor?: string;
-  refresh?: boolean;
-  snapshot?: boolean;
-}): Promise<Board> {
-  const key = `board-${options.period}-${options.category}-${options.order}${options.cursor ? `-${cacheFile(options.cursor).slice(0, 12)}` : ""}`;
-  const cached = memory.get(key);
-  if (
-    !options.snapshot &&
-    !options.refresh &&
-    cached &&
-    Date.now() - cached.time < 60000
-  )
-    return {
-      ...(cached.value as Board),
-      provenance: { ...(cached.value as Board).provenance, origin: "cache" },
-    };
-  return singleFlight(
-    `${key}:${options.snapshot ? "snapshot" : "live"}`,
-    async () => {
-      try {
-        if (options.snapshot)
-          throw new DataError(
-            "No saved snapshot is available for these leaderboard filters yet.",
-            404,
-          );
-        const page = await remote(
-          "leaderboard",
-          {
-            time_period: options.period,
-            category: options.category,
-            sort_by: options.order,
-            limit: "200",
-            ...(options.cursor ? { cursor: options.cursor } : {}),
-          },
-          z.object({
-            data: z.array(leaderboardSchema),
-            pagination: paginationSchema,
-          }),
-        );
-        return await remember(key, {
-          traders: page.data.map((row) => ({
-            address: row.user_id.toLowerCase(),
-            name: row.user_name || row.user_id,
-            rank: row.rank,
-            pnl: row.pnl,
-            volume: row.volume,
-            verified: row.verified,
-          })),
-          period: options.period,
-          category: options.category,
-          order: options.order,
-          nextCursor: page.pagination?.next_cursor || null,
-          provenance: {
-            origin: "live" as const,
-            fetchedAt: new Date().toISOString(),
-          },
-        });
-      } catch (error) {
-        const saved = await fallback<Board>(key);
-        if (saved)
-          return {
-            ...saved,
-            provenance: {
-              ...saved.provenance,
-              origin: "snapshot",
-              warning: options.snapshot
-                ? "Saved public-data snapshot; not a live refresh."
-                : "Live leaderboard unavailable. Showing the saved data timestamp below.",
-            },
-          };
-        throw error;
-      }
-    },
-  );
 }
 
 export async function getWallet(

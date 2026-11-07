@@ -3,9 +3,9 @@ export default function NotFound() {
   return (
     <main className="empty-state">
       <h1>Page not found</h1>
-      <p>Open a trader from the leaderboard or enter a valid wallet address.</p>
+      <p>Search for a market, or look up a wallet by its address.</p>
       <Link className="primary-button" href="/">
-        Back to leaderboard
+        Back to markets
       </Link>
     </main>
   );

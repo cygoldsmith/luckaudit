@@ -259,3 +259,16 @@ test("links parse with or without a scheme, on polymarket.com and polymarket.us"
   assert.deepEqual(parseMarketQuery("https://polymarket.com/sports/nfl/nfl-buf-kc-2026-11-08"), { kind: "event", slug: "nfl-buf-kc-2026-11-08", child: undefined });
   assert.equal(parseMarketQuery("polymarket odds").kind, "text");
 });
+
+test("wallet lookup accepts addresses, @usernames and profile links, not market links", async () => {
+  const { parseWalletQuery } = await import("../src/lib/wallet-lookup");
+  const a = "0x9d84ce0306f8551e02efef1680475fc0f1dc1344";
+  assert.deepEqual(parseWalletQuery(a.toUpperCase().replace("0X", "0x")), { kind: "address", address: a });
+  assert.deepEqual(parseWalletQuery(`https://polymarket.com/profile/${a}`), { kind: "address", address: a });
+  assert.deepEqual(parseWalletQuery(`polymarket.com/profile/${a}?tab=activity`), { kind: "address", address: a });
+  assert.deepEqual(parseWalletQuery("https://polymarket.com/@ImJustKen"), { kind: "username", name: "ImJustKen" });
+  assert.deepEqual(parseWalletQuery("@ImJustKen"), { kind: "username", name: "ImJustKen" });
+  assert.equal(parseWalletQuery("https://polymarket.com/event/fed-decision"), null);
+  assert.equal(parseWalletQuery("polymarket.us/sports/cfb/cfb-ore-ohiost-2026-11-07"), null);
+  assert.equal(parseWalletQuery("Fed rates"), null);
+});

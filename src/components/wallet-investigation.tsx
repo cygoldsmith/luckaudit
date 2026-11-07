@@ -208,7 +208,7 @@ export default function WalletInvestigation({
   }
   return (
     <div className="site investigation-shell">
-      <SiteHeader active="wallet" />
+      <SiteHeader active="wallets" />
       <main className="investigation-main">
         <div className="breadcrumbs">
           <Link href="/">Markets</Link>
@@ -441,7 +441,7 @@ export default function WalletInvestigation({
                     <p className="panel-footnote">
                       Historical source observations may be daily. Missing
                       values remain gaps. This series differs from the
-                      leaderboard’s period P&L.
+                      period P&L Polymarket shows on its own leaderboard.
                     </p>
                   </section>
                   <section className="panel assessment-panel">

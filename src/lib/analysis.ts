@@ -18,7 +18,7 @@ export const METHOD_VERSION = WALLET_METHOD_ID;
 export type NullModel = ((price: number) => number) | null;
 export const LIMITATIONS = [
   "This is an anomaly screen, not a finding that a trader is lucky, skilled, or used nonpublic information. Good forecasters and fast readers of public news can produce unusual records.",
-  "Wallets opened from the leaderboard were selected for success. A single-wallet p-value does not correct for that selection or for repeated searches; search several wallets together for a Benjamini–Hochberg correction.",
+  "A single-wallet p-value does not correct for how the wallet was chosen or for repeated lookups. Wallets picked because they won are selected for success; the library population card applies the Benjamini–Hochberg correction across every tested wallet.",
   "Positions follow the Advanced spec: net shares (bought − sold) still held at resolution, cost of at least $10, first-buy entry price 2¢–95¢, not holding both outcomes, and one bet per event (the largest). Positions moved by splits, merges or transfers are counted by their trades only.",
   "Each bet's null probability is q = max(entry price, calibrated win rate at that price) from the library's isotonic calibration curve. Prices are not perfectly calibrated probabilities, and related events can still be dependent.",
   "One person using many wallets looks like many small traders; wallets are shown as shortened addresses only.",
