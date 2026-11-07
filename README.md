@@ -1,125 +1,82 @@
 # LuckAudit
 
-A market-first Polymarket investigation tool built with Next.js, TypeScript, statistical analysis, and **local Ollama AI**. No Polymarket key or external AI key is required.
+**Was the trading right before the news unusual?**
 
-## Run
+Pick any resolved Polymarket market. LuckAudit checks whether buying in the 6 hours before the market's big price move was unusually one-sided toward the side that then won. It also checks whether the wallets doing that buying have winning records elsewhere that are hard to explain by luck. Every answer comes with a measured error rate.
+
+Built at **HackBU 2026 – NYCAIRR**, track: **Markets & Networks** (transparency and fairness in financial and information systems).
+
+## What it does
+
+Every market report has three parts:
+
+1. **Market test.** Compares the 6 hours before the big move with every earlier 6-hour window in the same market and gives a p-value.
+2. **Wallet check.** For the 20 wallets that backed the winning side hardest before the move, it asks whether each one has a record in other markets that luck alone would rarely produce, using an exact Poisson-binomial test.
+3. **Comparison.** Shows how this market ranks against similar markets in a reference library, as a percentile.
+
+Each market gets one of three verdicts: **Unusual pre-move buying**, **Nothing unusual detected**, or **Not testable**.
+
+You can also search **several markets at once**. The tool then applies a Benjamini–Hochberg correction so that extra searches don't create false alarms.
+
+## Responsible AI and fair use
+
+The event's theme is AI responsibility. These rules are built into the tool:
+
+- **An anomaly, not an accusation.** The words "insider," "cheater," "rigged" and "fair" never appear as labels. "Nothing unusual" is not proof a market was clean.
+- **Measured error rates.** Two placebo tests, one with fake news times and one with fake wallets, measure how often the tool raises false alarms. That rate is shown next to every verdict.
+- **Settings fixed in advance.** The nine method settings in `src/lib/integrity/settings.ts` were written down before running on real markets, so they couldn't be tuned to produce dramatic verdicts. The only later changes were the library's $10k volume floor and its size. Both changed which markets enter the library, never how a market is tested, and both are recorded in the commit history.
+- **Resolved markets only.** Live markets are never labeled.
+- **Privacy.** Wallets are shown as shortened addresses, with no attempt to link them to people.
+- **Local AI only.** Optional plain-English explanations run on a local model through Ollama. No data is sent to an outside AI service, and the AI can only cite evidence the statistics computed.
+
+## How it works
+
+| Step | What happens |
+| --- | --- |
+| Find the big move | The largest one-hour price change of 10+ points that lasts, and that no single wallet caused (no wallet made more than 25% of that hour's dollars) |
+| Score one-sidedness | Aggressive buying of the favored side minus the reverse, cushioned by the market's typical volume |
+| Market p-value | (1 + earlier windows scoring at least as high) ÷ (1 + earlier windows) |
+| Wallet records | Bets of $10+ at 3¢–50¢ held to resolution, one per event. Fair chance = max(price, how often that price range actually won) |
+| Corrections | One market: p ≤ 0.05. Several markets or wallets: Benjamini–Hochberg at 5% |
+| Reference library | Resolved markets from the last 180 days with at least $10k volume, in politics and world events, awards, and company or government announcements |
+
+Full method: [docs/market-integrity-method.md](docs/market-integrity-method.md). Wallet test details: [docs/methodology.md](docs/methodology.md).
+
+## Tech
+
+Next.js 16, React 19 and TypeScript; public Polymarket APIs (Gamma and Data API v2), with no API keys; exact statistics written from scratch (Poisson-binomial, Benjamini–Hochberg, permutation-style p-values); optional local AI through Ollama (Gemma).
+
+## Run it
+
+Requires Node 22 or later.
 
 ```sh
 npm install
-npm run dev -- --port 3001
+npm run dev -- --port 3000
 ```
 
-Open http://localhost:3001. Port 3000 is currently occupied by another local project; any available port works. For a production Node server:
+Open http://localhost:3000. Open a resolved market and select its **Integrity test** tab, or go to **Integrity search** to search several markets.
+
+Build the reference library while the dev server is running. It takes a few hours, and you can stop and restart it at any time.
 
 ```sh
-npm run build
-npm start -- --port 3001
+npm run library -- --discover
 ```
 
-Use Node 22 or later. This app now has server API routes and is **not a static export**.
+Optional local AI: install [Ollama](https://ollama.com) with a model. Settings live in `.env.local` (see `.env.example`).
 
-## Local AI
+Tests: `npm test` and `npm run typecheck`.
 
-Keep Ollama running. LuckAudit discovers an installed model, preferring Gemma 4. On this machine it detected `gemma4:e4b-it-qat`.
+## Limits
 
-Optional `.env.local` settings (copy `.env.example`):
+- "Unusual" means unlikely if nobody knew early. Fast readers of public news, or good forecasters, can produce the same pattern.
+- A careful insider who trades small can stay invisible.
+- Markets where the information arrived gradually have no sudden move, so they can't be tested.
+- One person using many wallets looks like many small traders.
+- Results apply only to resolved markets and the library this tool built.
 
-```dotenv
-OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=gemma4:e4b-it-qat
-```
+## AI use disclosure
 
-Only local loopback Ollama URLs are accepted. No prompt or evidence is sent to an external AI provider. Polymarket data is still fetched from Polymarket's public service. A local report may take a minute or more depending on hardware. Reports use schema-constrained JSON, validate cited evidence IDs, and preserve server-computed conclusions. If Ollama is unavailable or generation fails, the deterministic statistical report remains usable.
-
-Check local model status at `/api/status`.
-
-## Market integrity search
-
-Paste a resolved market (or search several, or a whole library category) to test whether buying in the 6 hours before its big move was unusually one-sided toward the side that then won. Each report has a market p-value, a wallet check on the top 20 pre-move buyers (exact Poisson-binomial, BH-corrected), and a percentile against a 180-day reference library. Multi-market searches apply Benjamini–Hochberg across markets. Placebo tests measure the false-alarm rate.
-
-- Nine prespecified settings: `src/lib/integrity/settings.ts`
-- Method and implementation notes: [docs/market-integrity-method.md](docs/market-integrity-method.md)
-- Build the reference library (with the dev server running): `npm run library -- --discover`
-
-## Main flow
-
-1. Search the Market Explorer by title, topic, Polymarket URL, or condition ID. Browse active or resolved binary markets.
-2. Open a market to inspect observed prices, large fills, participant concentration, persistent price rises, and entries preceding those rises.
-3. Scan the historical records of up to five leading participants, or open any participant's wallet investigation.
-4. Use the wallet's **Primary markets** tab to see where its loaded activity is concentrated. Other wallet tabs show trades, qualifying bets, and the exact wallet record test.
-5. Generate a local AI explanation with references to computed evidence. Download market investigations as JSON or wallet fills as CSV.
-6. Open **Validation** to run reproducible exact-test benchmarks and inspect known-label false discovery and power results. These synthetic results are not a measured false discovery rate for real wallets.
-
-The leaderboard at `/leaderboard` remains available for trader discovery, watchlists, recent investigations, and comparison.
-
-Search applies to the currently loaded leaderboard; **Load more traders** follows Polymarket's opaque cursor. Watchlist and recent-history storage keeps trader identities, not financial values that could be confused with another period.
-
-## Real data and saved cases
-
-The app uses real public records: Gamma provides market discovery and metadata; the [Polymarket Data API v2](https://data-api.polymarket.com/v2/docs) supplies leaderboard, trades, activity, positions, resolutions, profile statistics, and P&L history. Market turnover sums retrieved wallet-side fills and must not be interpreted as exchange-wide volume.
-
-Every response carries a retrieval timestamp and an origin (`live`, `cache`, or `snapshot`). If a live request fails, an available saved response can be shown with an explicit snapshot notice. If no saved data exists, the app shows an error rather than substituting fictional results.
-
-A recorded Federal Reserve market is linked beneath market search. Two real-wallet cases are linked below the leaderboard totals:
-
-- A resolved-position case with complete retrieved histories and 19 eligible event observations in the bundled recording.
-- A large-wallet case that demonstrates bounded retrieval and an explicitly withheld assessment.
-
-Compressed, public-data recordings live in `src/data/snapshots/`. They were retrieved on November 7, 2026 UTC. Runtime cache files are stored in the ignored `.luckaudit-cache/` directory. To update bundled recordings from the running app:
-
-```sh
-npm run snapshots
-```
-
-The recorder refreshes market browsing, the recorded Fed market, the monthly leaderboard, and two selected wallet histories, preserving retrieval provenance. Set `LUCKAUDIT_URL` to override its local port. It does not generate or edit trading records.
-
-## Statistical method
-
-See [docs/methodology.md](docs/methodology.md) for assumptions, formulas, eligibility, and limitations.
-
-See [docs/market-integrity-method.md](docs/market-integrity-method.md) for the market test, library and placebos, and [docs/market-audit-method.md](docs/market-audit-method.md) for the descriptive market views. An earlier cohort spec is reviewed in [docs/statistical-spec-review.md](docs/statistical-spec-review.md). The tool screens for anomalies; it cannot establish fairness, information misuse, or an absence of manipulation.
-
-Important distinctions:
-
-- Leaderboard `volume` is **shares, not USD**. Finite-window P&L includes marked changes; lifetime P&L is realized. The app retains those definitions.
-- Profitable closed positions are not the same as correct predictions. Closed positions may include early exits.
-- The wallet record test counts resolved binary bets still held at resolution, costing at least $10 at 3¢–50¢, one per event (the largest), with an exact Poisson-binomial p-value. One wallet is judged at 0.05; groups use the pre-filter and Benjamini–Hochberg.
-- Bet P&L in the record is held shares × payout − cost; API P&L is displayed separately.
-- One bet per event is kept, the largest by cost, without considering whether it won.
-- Tail frequencies are **exploratory, conditional, and not selection-adjusted**. Leaderboard selection and residual dependence prevent a platform-wide significance claim.
-- No result determines that a trader is an insider, or establishes skill rather than luck.
-
-## Retrieval limits
-
-To keep a single investigation bounded: at most 10,000 fills, 10,000 activity records, 3,000 closed positions, 2,000 other positions, and 240 resolution markets are fetched. Pagination failures, missing data, and limits are reported. A missing numeric value remains unavailable, never zero. API requests time out and retry transient failures once. Missing AI configuration does not block statistical analysis.
-
-## Verification
-
-```sh
-npm test
-npm run typecheck
-npm run build
-```
-
-The tests cover the integrity method's worked examples, the wallet bet rules and record test, real-wallet recordings, market normalization, concentration, timing coverage, self-impact exclusions, exact Poisson-binomial tails, BH/BY corrections, reproducible synthetic validation, local AI contracts, and exports.
-
-## Structure
-
-- `src/app/page.tsx` — market search and browsing
-- `src/app/leaderboard/page.tsx` — leaderboard, watchlist, history, comparison, and wallet entry
-- `src/components/market-investigation.tsx` — market activity, timing, participants, and local AI report
-- `src/components/wallet-primary-markets.tsx` — wallet activity by market
-- `src/app/validation/page.tsx` — synthetic validation results and unmeasured real-world checks
-- `src/components/wallet-investigation.tsx` — investigation dashboard
-- `src/components/audit-charts.tsx` — P&L and exact win-distribution charts
-- `src/app/api/` — validated server endpoints
-- `src/lib/polymarket.ts` — ingestion, cursor pagination, cache, and saved snapshots
-- `src/lib/analysis.ts` — wallet bet rules and exact record test
-- `src/lib/integrity/` — market integrity method: settings, statistics, library and reports
-- `src/lib/report.ts` — statistical reports and local Ollama explanations
-- `src/lib/market-data.ts` — Gamma discovery and market ingestion cache
-- `src/lib/market-analysis.ts` — descriptive market signals
-- `src/lib/statistical-core.ts`, `src/lib/validation.ts` — exact-test core and synthetic benchmark
-- `tests/` — calculation and local AI contract tests
-
-This is a local Node application. The retained Sites project identifier is not a published deployment; deploying the server routes to another platform requires an appropriate Node host or runtime adapter.
+- **Coding assistant:** Claude Code (Anthropic) was used to help implement the statistical method, the data pipeline, the user interface and the tests.
+- **Our own work:** the team designed the method in our "Market Integrity Search — Method" document, including the nine settings, the placebo tests and the responsible-use rules. We can explain how every part works.
+- **AI inside the app:** a local Gemma model through Ollama writes optional explanations of computed results. It never decides a verdict.
