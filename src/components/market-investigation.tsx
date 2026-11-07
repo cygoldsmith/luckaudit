@@ -308,9 +308,9 @@ export default function MarketInvestigation({
             <div className="market-scope-banner">
               <ShieldCheck size={17} />
               <span>
-                <strong>Activity signals, not a fairness rating.</strong> A
-                market scan does not determine whether a trader had private
-                information.
+                <strong>Wallet analysis, not an accusation.</strong> Flags mean
+                records unlikely under market odds, consistent with skill,
+                speed, or information.
               </span>
               <Link href="/validation">
                 Validation

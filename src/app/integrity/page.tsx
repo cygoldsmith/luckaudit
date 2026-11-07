@@ -386,7 +386,12 @@ function CalibrationChart({ bins }: { bins: Check["check"]["calibration"] }) {
     y = (p: number) => h - pad - p * (h - 2 * pad);
   const fitted = bins.filter((b) => b.usesFit && b.meanPrice !== null);
   return (
-    <svg className="integrity-chart" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Calibration curve against the diagonal">
+    <svg
+      className="integrity-chart calibration-chart"
+      viewBox={`0 0 ${w} ${h}`}
+      role="img"
+      aria-label="Calibration curve against the diagonal"
+    >
       <line className="grid" x1={x(0)} y1={y(0)} x2={x(1)} y2={y(1)} />
       {[0.25, 0.5, 0.75].map((g) => (
         <g key={g}>

@@ -4922,3 +4922,8 @@ main {
   font-size: 14px;
   margin: 12px 0 4px;
 }
+
+.integrity-chart.calibration-chart {
+  max-width: 760px;
+  margin: 0 auto;
+}
