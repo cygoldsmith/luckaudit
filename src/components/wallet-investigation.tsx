@@ -20,11 +20,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { SiteHeader } from "./app-frame";
-import { ProfitChart, WinsChart } from "./audit-charts";
+import { WinsChart } from "./audit-charts";
 import { RECORD_LABELS } from "@/lib/analysis";
 import { DISCLAIMER } from "./integrity-panel";
 import { EDGE_LABELS, TIER_LABELS } from "@/lib/integrity/wallet-spec";
-import WalletPrimaryMarkets from "./wallet-primary-markets";
 import {
   csv,
   download,
@@ -46,7 +45,7 @@ import {
   type Report,
   type Trader,
 } from "@/lib/domain";
-type Tab = "overview" | "markets" | "trades" | "record" | "report";
+type Tab = "trades" | "record" | "report";
 const badgeClass = (label: string) =>
   label === "unusual-record" ? "unusual" : label === "nothing-unusual" ? "within-baseline" : "insufficient";
 const fmtP = (p: number | null) => (p === null ? "—" : p < 0.001 ? p.toExponential(1) : p.toFixed(3));
@@ -62,7 +61,7 @@ export default function WalletInvestigation({
   const [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState(0);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("record");
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState("positions");
   const [positionFilter, setPositionFilter] = useState("all");
@@ -356,13 +355,7 @@ export default function WalletInvestigation({
               aria-label="Investigation sections"
             >
               {(
-                [
-                  "overview",
-                  "markets",
-                  "trades",
-                  "record",
-                  "report",
-                ] as Tab[]
+                ["record", "trades", "report"] as Tab[]
               ).map((value) => (
                 <button
                   key={value}
@@ -373,15 +366,11 @@ export default function WalletInvestigation({
                     setActionError("");
                   }}
                 >
-                  {value === "overview"
-                    ? "Overview"
-                    : value === "markets"
-                      ? "Primary markets"
-                      : value === "trades"
-                        ? "Positions & trades"
-                        : value === "record"
-                          ? "Record test"
-                          : "Investigation report"}
+                  {value === "trades"
+                    ? "Positions & trades"
+                    : value === "record"
+                      ? "Record test"
+                      : "Investigation report"}
                   {value === "trades" ? (
                     <span>{bundle.positions.length}</span>
                   ) : null}
@@ -393,128 +382,6 @@ export default function WalletInvestigation({
                 <Info size={15} />
                 {actionError}
               </div>
-            ) : null}
-            {tab === "overview" ? (
-              <>
-                <section className="audit-stats">
-                  <Metric
-                    title="All-time API realized P&L"
-                    value={money(bundle.stats?.all_time_pnl?.realized_pnl)}
-                    note="API profile ledger; includes other position types"
-                  />
-                  <Metric
-                    title="Loaded positions"
-                    value={compact(audit.summary.positions)}
-                    note={`${audit.summary.closed} closed · ${audit.summary.positions - audit.summary.closed} other`}
-                  />
-                  <Metric
-                    title="Bets in the record"
-                    value={String(audit.summary.eventGroups)}
-                    note={`${audit.summary.eligible} qualifying positions; largest per event counted`}
-                  />
-                  <Metric
-                    title="Actual / expected wins"
-                    value={rec && rec.observations ? `${rec.wins} / ${rec.expected.toFixed(2)}` : "—"}
-                    note="Expected = sum of fair chances"
-                  />
-                  <Metric
-                    title="Luck ratio"
-                    value={rec?.luckRatio != null ? rec.luckRatio.toFixed(1) : "—"}
-                    note="Actual ÷ expected wins (size of the edge)"
-                  />
-                  <Metric
-                    title="Exact p-value"
-                    value={rec ? fmtP(rec.p) : "—"}
-                    note={`Single-wallet bar ${rec?.alpha ?? 0.05}; not selection-adjusted`}
-                  />
-                </section>
-                <div className="analysis-grid">
-                  <section className="panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>Historical trading P&L</h2>
-                        <p>Cumulative API trading series · USD</p>
-                      </div>
-                      <AudioMark />
-                    </div>
-                    <ProfitChart points={bundle.pnl} />
-                    <p className="panel-footnote">
-                      Historical source observations may be daily. Missing
-                      values remain gaps. This series differs from the
-                      period P&L Polymarket shows on its own leaderboard.
-                    </p>
-                  </section>
-                  <section className="panel assessment-panel">
-                    <span
-                      className={`assessment-badge ${badgeClass(rec?.label || "too-few-bets")}`}
-                    >
-                      <ShieldCheck size={14} />
-                      {rec ? RECORD_LABELS[rec.label] : "Not tested"}
-                    </span>
-                    <h2>{data.report.headline}</h2>
-                    <p>
-                      {rec?.reasons.length
-                        ? rec.reasons.join(" ")
-                        : "Unusual means hard to explain by luck given the prices paid. It cannot tell skill, fast reading of public news, and nonpublic information apart."}
-                    </p>
-                    <button
-                      className="outline-button"
-                      onClick={() => setTab("record")}
-                    >
-                      Inspect the record test
-                      <ArrowRight size={14} />
-                    </button>
-                    <button
-                      className="text-button"
-                      onClick={() => setTab("report")}
-                    >
-                      Read the evidence report
-                      <ArrowUpRight size={14} />
-                    </button>
-                  </section>
-                </div>
-                <section className="panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Coverage & eligibility</h2>
-                      <p>Only resolved positions meeting the bet rules enter the record.</p>
-                    </div>
-                  </div>
-                  <div className="coverage-grid">
-                    {Object.entries(bundle.coverage)
-                      .filter(([key]) => key !== "warnings")
-                      .map(([key, value]) => (
-                        <div key={key}>
-                          <span>{key[0].toUpperCase() + key.slice(1)}</span>
-                          <strong className={value ? "positive" : "negative"}>
-                            {value ? "Retrieved" : "Partial"}
-                          </strong>
-                        </div>
-                      ))}
-                  </div>
-                  <div className="pipeline-stats">
-                    <span>{bundle.trades.length.toLocaleString()} fills</span>
-                    <ArrowRight size={14} />
-                    <span>{audit.summary.positions} positions</span>
-                    <ArrowRight size={14} />
-                    <span>{audit.summary.eligible} qualifying bets</span>
-                    <ArrowRight size={14} />
-                    <strong>
-                      {audit.summary.eventGroups} bets in the record
-                    </strong>
-                  </div>
-                  <button
-                    className="text-button"
-                    onClick={() => setTab("trades")}
-                  >
-                    See every inclusion and exclusion
-                    <ArrowUpRight size={14} />
-                  </button>
-                </section>
-              </>
-            ) : null}
-            {tab === "markets" ? (
-              <WalletPrimaryMarkets bundle={bundle} />
             ) : null}
             {tab === "trades" ? (
               <section className="panel positions-panel">
@@ -747,12 +614,15 @@ export default function WalletInvestigation({
             {tab === "record" ? (
               <>
                 {data.library ? <LibraryCard library={data.library} /> : null}
+                {/* Own-history test: a fallback only for wallets with no library card. */}
+                {!data.library?.card ? (
+                  <>
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>Wallet record test</h2>
+                      <h2>Own-history record test</h2>
                       <p>
-                        Bets of $10 or more priced 3¢–50¢, held to resolution, one per event · exact Poisson-binomial
+                        Fallback for wallets outside the library: this wallet’s own resolved bets ($10+, first-buy entry 2¢–95¢, held to resolution, one per event), exact Poisson-binomial
                       </p>
                     </div>
                     <span className={`assessment-badge ${badgeClass(audit.record.label)}`}>
@@ -880,6 +750,8 @@ export default function WalletInvestigation({
                     </p>
                   ) : null}
                 </section>
+                  </>
+                ) : null}
                 <section className="panel">
                   <h2>Assumptions & limitations</h2>
                   <ul className="limitations-list">
@@ -888,6 +760,46 @@ export default function WalletInvestigation({
                     ))}
                   </ul>
                 </section>
+                {!data.library?.card ? (
+                <section className="panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>Coverage & eligibility</h2>
+                      <p>Only resolved positions meeting the bet rules enter the record.</p>
+                    </div>
+                  </div>
+                  <div className="coverage-grid">
+                    {Object.entries(bundle.coverage)
+                      .filter(([key]) => key !== "warnings")
+                      .map(([key, value]) => (
+                        <div key={key}>
+                          <span>{key[0].toUpperCase() + key.slice(1)}</span>
+                          <strong className={value ? "positive" : "negative"}>
+                            {value ? "Retrieved" : "Partial"}
+                          </strong>
+                        </div>
+                      ))}
+                  </div>
+                  <div className="pipeline-stats">
+                    <span>{bundle.trades.length.toLocaleString()} fills</span>
+                    <ArrowRight size={14} />
+                    <span>{audit.summary.positions} positions</span>
+                    <ArrowRight size={14} />
+                    <span>{audit.summary.eligible} qualifying bets</span>
+                    <ArrowRight size={14} />
+                    <strong>
+                      {audit.summary.eventGroups} bets in the record
+                    </strong>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => setTab("trades")}
+                  >
+                    See every inclusion and exclusion
+                    <ArrowUpRight size={14} />
+                  </button>
+                </section>
+                ) : null}
               </>
             ) : null}
             {tab === "report" ? (
@@ -1008,9 +920,6 @@ function Metric({
       <small>{note}</small>
     </div>
   );
-}
-function AudioMark() {
-  return <span className="chart-source-label">API history</span>;
 }
 
 function LibraryCard({ library }: { library: NonNullable<Investigation["library"]> }) {

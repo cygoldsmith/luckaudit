@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { auditWallet } from "../src/lib/analysis";
-import { calibrate, fairChance } from "../src/lib/integrity/core";
 import { csv } from "../src/lib/client";
 import type { WalletBundle } from "../src/lib/domain";
 const address = "0x" + "a".repeat(40),
@@ -128,11 +127,9 @@ test("several markets in one event keep only the largest bet", () => {
 test("losses count, fair chance uses the library bucket rate when higher", () => {
   const b = fixture(6);
   lose(b, 0);
-  const cal = calibrate([
-    { wallet: "w", condition: "m1", event: "e1", outcome: 0, price: 0.25, cost: 20, won: true },
-    { wallet: "w", condition: "m2", event: "e2", outcome: 0, price: 0.25, cost: 20, won: false },
-  ]);
-  const a = auditWallet(b, (p) => fairChance(p, cal), 2);
+  // A calibration curve that says 20–30¢ shares won half the time.
+  const q = (p: number) => (p >= 0.2 && p < 0.3 ? Math.max(p, 0.5) : p);
+  const a = auditWallet(b, q, 2);
   assert.equal(a.record.wins, 5);
   assert.equal(a.bets[0].probability, 0.5);
   assert.ok(Math.abs(a.record.expected - 3) < 1e-9);
@@ -144,14 +141,8 @@ test("short records, incomplete coverage and too few bets are not tested", () =>
   // 0.8^5 = 33% chance by luck, so the record can never pass the 0.05 bar.
   const b = fixture(5);
   for (const t of b.trades) t.price = 0.45;
-  const cal = calibrate([
-    { wallet: "w", condition: "m1", event: "e1", outcome: 0, price: 0.45, cost: 20, won: true },
-    { wallet: "w", condition: "m2", event: "e2", outcome: 0, price: 0.45, cost: 20, won: true },
-    { wallet: "w", condition: "m3", event: "e3", outcome: 0, price: 0.45, cost: 20, won: true },
-    { wallet: "w", condition: "m4", event: "e4", outcome: 0, price: 0.45, cost: 20, won: true },
-    { wallet: "w", condition: "m5", event: "e5", outcome: 0, price: 0.45, cost: 20, won: false },
-  ]);
-  assert.equal(auditWallet(b, (p) => fairChance(p, cal)).record.label, "record-too-short");
+  const q = (p: number) => (p >= 0.4 && p < 0.5 ? 0.8 : p);
+  assert.equal(auditWallet(b, q).record.label, "record-too-short");
   const c = fixture();
   c.coverage.trades = false;
   assert.equal(auditWallet(c).record.label, "incomplete-history");

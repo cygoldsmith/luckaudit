@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeMarket, primaryMarkets } from "../src/lib/market-analysis";
+import { analyzeMarket } from "../src/lib/market-analysis";
 import {
   normalizeMarket,
   parseMarketQuery,
@@ -143,35 +143,6 @@ test("partial coverage is carried through to the evidence report", () => {
   const a = analyzeMarket(b);
   assert.ok(a.signals.find((s) => s.id === "M2")?.text.includes("incomplete"));
   assert.ok(a.limitations.includes("Incomplete tape"));
-});
-test("wallet primary markets rank turnover without calling it invested capital", () => {
-  const b: WalletBundle = {
-    address: wallet,
-    trades: [
-      trade(0, 0.2, wallet, 100),
-      { ...trade(1, 0.8, wallet, 50), side: "SELL" },
-      { ...trade(2, 0.5, wallet, 10), condition_id: "0x" + "e".repeat(64) },
-    ],
-    activity: [],
-    positions: [],
-    resolutions: [],
-    pnl: [],
-    stats: null,
-    coverage: {
-      trades: true,
-      activity: true,
-      positions: true,
-      resolutions: true,
-      warnings: [],
-    },
-    provenance: { origin: "snapshot", fetchedAt: "2026-01-01" },
-  };
-  const rows = primaryMarkets(b);
-  assert.equal(rows[0].turnover, 60);
-  assert.equal(rows[0].buyNotional, 20);
-  assert.equal(rows[0].realizedPnl, null);
-  assert.equal(rows[0].heldShares, null);
-  assert.equal(rows[0].fills, 2);
 });
 test("exact Poisson-binomial probabilities handle edge cases and reference tail", () => {
   assert.deepEqual(poissonBinomial([]), [1]);

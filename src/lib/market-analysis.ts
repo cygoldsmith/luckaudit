@@ -9,7 +9,6 @@ import type {
   MarketAudit,
   MarketBundle,
   MarketParticipant,
-  PrimaryMarket,
 } from "./market-types";
 import type { IntegrityReport } from "./integrity/data";
 export const MARKET_LIMITATIONS = [
@@ -196,48 +195,4 @@ export function marketReport(
     ],
     limitations: audit.limitations,
   };
-}
-
-export function primaryMarkets(bundle: WalletBundle): PrimaryMarket[] {
-  const result = new Map<string, PrimaryMarket>();
-  for (const t of bundle.trades) {
-    if (!valid(t)) continue;
-    let m = result.get(t.condition_id);
-    if (!m) {
-      m = {
-        condition: t.condition_id,
-        title: t.title,
-        eventSlug: t.event_slug || t.slug,
-        fills: 0,
-        buyNotional: 0,
-        turnover: 0,
-        turnoverShare: 0,
-        realizedPnl: null,
-        heldShares: null,
-      };
-      result.set(t.condition_id, m);
-    }
-    m.fills++;
-    m.turnover += t.price * t.size;
-    if (t.side === "BUY") m.buyNotional += t.price * t.size;
-  }
-  for (const [condition, m] of result) {
-    const positions = bundle.positions.filter(
-      (p) => p.condition_id === condition,
-    );
-    if (
-      positions.length &&
-      positions.every((p) => isFiniteNumber(p.realized_pnl))
-    )
-      m.realizedPnl = positions.reduce((s, p) => s + p.realized_pnl!, 0);
-    if (
-      positions.length &&
-      positions.every((p) => isFiniteNumber(p.current_size))
-    )
-      m.heldShares = positions.reduce((s, p) => s + p.current_size!, 0);
-  }
-  const all = [...result.values()],
-    total = all.reduce((s, m) => s + m.turnover, 0);
-  for (const m of all) m.turnoverShare = total ? m.turnover / total : 0;
-  return all.sort((a, b) => b.turnover - a.turnover);
 }

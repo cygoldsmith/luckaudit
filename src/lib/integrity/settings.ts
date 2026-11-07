@@ -78,15 +78,6 @@ export const SETTINGS = {
   placeboRuns: 20,
 } as const;
 
-/** Price buckets for the calibration check (Step 0). */
-export const PRICE_BUCKETS = [
-  [0.03, 0.1],
-  [0.1, 0.2],
-  [0.2, 0.3],
-  [0.3, 0.4],
-  [0.4, 0.5],
-] as const;
-
 /** Placebo thresholds stated in the method. */
 export const CALIBRATION_LIMIT = 0.1;
 

@@ -5,7 +5,6 @@
 import { exactTail, poissonBinomial, seededRandom } from "../statistical-core";
 import {
   CALIBRATION_LIMIT,
-  PRICE_BUCKETS,
   SETTINGS,
   type CategoryId,
   type ScoreType,
@@ -346,100 +345,23 @@ export function benjaminiHochberg(p: number[], alpha: number = SETTINGS.alpha): 
   return { rejected, q, k, threshold: m ? (k * alpha) / m : 0 };
 }
 
-/* ------------------------------------------------------------ wallet bets */
+/* -------------------------------------------------------- record score */
 
-export interface Bet {
-  wallet: string;
+/** One resolved bet in a record: did it win, and its null (fair) win chance. */
+export interface RecordBet {
+  wallet?: string;
   condition: string;
   event: string;
-  outcome: 0 | 1;
+  outcome?: 0 | 1;
   price: number;
   cost: number;
   won: boolean;
+  fair: number;
 }
-
-/**
- * Step 0 wallet bets for one market: net shares = bought − sold before the
- * resolution cutoff; keep positive holdings with cost ≥ $10 and average price
- * 3¢–50¢; skip wallets holding both Yes and No. Event dedup happens later.
- */
-export function marketBets(
-  allSideFills: Fill[],
-  condition: string,
-  event: string,
-  resolution: Resolution,
-): Bet[] {
-  if (!resolution.resolved || resolution.yesWon === null) return [];
-  const rule = SETTINGS.walletRecord;
-  const book = new Map<string, { shares: [number, number]; buyShares: [number, number]; buyUsd: [number, number] }>();
-  for (const f of allSideFills) {
-    if (resolution.cutoff !== null && f.timestamp >= resolution.cutoff) continue;
-    let b = book.get(f.wallet);
-    if (!b) book.set(f.wallet, (b = { shares: [0, 0], buyShares: [0, 0], buyUsd: [0, 0] }));
-    const o = f.outcome;
-    if (f.side === "BUY") {
-      b.shares[o] += f.size;
-      b.buyShares[o] += f.size;
-      b.buyUsd[o] += f.size * f.price;
-    } else b.shares[o] -= f.size;
-  }
-  const bets: Bet[] = [];
-  for (const [wallet, b] of book) {
-    const held = ([0, 1] as const).filter((o) => b.shares[o] > 0.01);
-    if (held.length !== 1) continue;
-    const o = held[0],
-      price = b.buyShares[o] ? b.buyUsd[o] / b.buyShares[o] : 0,
-      cost = price * b.shares[o];
-    if (cost < rule.minCost || price < rule.minPrice || price > rule.maxPrice) continue;
-    bets.push({ wallet, condition, event, outcome: o, price, cost, won: (o === 0) === resolution.yesWon });
-  }
-  return bets;
-}
-
-/* ------------------------------------------------------------ calibration */
-
-export interface Calibration {
-  buckets: { low: number; high: number; markets: number; winRate: number | null }[];
-}
-
-const bucketOf = (price: number) =>
-  PRICE_BUCKETS.findIndex(([lo, hi], i) => price >= lo && (price < hi || (i === PRICE_BUCKETS.length - 1 && price <= hi)));
-
-/** Each market counts at most once per bucket (its bets in that bucket are averaged). */
-export function calibrate(bets: Bet[]): Calibration {
-  const perMarket = PRICE_BUCKETS.map(() => new Map<string, { wins: number; n: number }>());
-  for (const b of bets) {
-    const k = bucketOf(b.price);
-    if (k < 0) continue;
-    const m = perMarket[k].get(b.condition) || { wins: 0, n: 0 };
-    m.n++;
-    if (b.won) m.wins++;
-    perMarket[k].set(b.condition, m);
-  }
-  return {
-    buckets: PRICE_BUCKETS.map(([low, high], k) => {
-      const rows = [...perMarket[k].values()];
-      return {
-        low,
-        high,
-        markets: rows.length,
-        winRate: rows.length ? rows.reduce((s, r) => s + r.wins / r.n, 0) / rows.length : null,
-      };
-    }),
-  };
-}
-
-export function fairChance(price: number, cal: Calibration | null) {
-  const k = bucketOf(price),
-    rate = cal && k >= 0 ? cal.buckets[k].winRate : null;
-  return Math.min(0.999, Math.max(price, rate ?? 0));
-}
-
-/* -------------------------------------------------------- wallet records */
 
 export interface WalletRecord {
   wallet: string;
-  bets: (Bet & { fair: number })[];
+  bets: RecordBet[];
   wins: number;
   expected: number;
   luckRatio: number | null;
@@ -447,33 +369,7 @@ export interface WalletRecord {
   allWinChance: number | null;
 }
 
-/** One bet per event (the largest by cost), excluding the given events. */
-export function walletRecord(
-  wallet: string,
-  index: Map<string, Bet[]>,
-  excludeEvents: Set<string>,
-  cal: Calibration | null,
-): WalletRecord {
-  const byEvent = new Map<string, Bet>();
-  for (const b of index.get(wallet) ?? [])
-    if (!excludeEvents.has(b.event)) {
-      const prev = byEvent.get(b.event);
-      if (!prev || b.cost > prev.cost) byEvent.set(b.event, b);
-    }
-  const bets = [...byEvent.values()].map((b) => ({ ...b, fair: fairChance(b.price, cal) }));
-  return scoreRecord(wallet, bets);
-}
-
-export function indexBets(bets: Bet[]) {
-  const index = new Map<string, Bet[]>();
-  for (const b of bets) {
-    const list = index.get(b.wallet);
-    if (list) list.push(b);
-    else index.set(b.wallet, [b]);
-  }
-  return index;
-}
-
+/** Exact Poisson-binomial score of a record against its fair chances. */
 export function scoreRecord(wallet: string, bets: WalletRecord["bets"]): WalletRecord {
   const q = bets.map((b) => b.fair),
     wins = bets.filter((b) => b.won).length,
@@ -487,187 +383,6 @@ export function scoreRecord(wallet: string, bets: WalletRecord["bets"]): WalletR
     luckRatio: expected ? wins / expected : null,
     p: exactTail(poissonBinomial(q), wins),
     allWinChance: q.reduce((a, b) => a * b, 1),
-  };
-}
-
-export type WalletLabel =
-  | "unusual-record"
-  | "nothing-unusual"
-  | "too-few-bets"
-  | "record-too-short";
-
-export interface WalletCheckRow {
-  wallet: string;
-  netUsd: number | null;
-  record: WalletRecord;
-  label: WalletLabel;
-  q: number | null;
-  fragile: boolean | null;
-  fragileP: number | null;
-}
-
-export interface WalletCheck {
-  rows: WalletCheckRow[];
-  m: number;
-  prefilterBar: number | null;
-  tested: number;
-  threshold: number;
-  correction: "BH" | "Bonferroni";
-}
-
-/** Part B steps 3–6 (record scoring, pre-filter, BH or Bonferroni, fragility). */
-export function walletCheck(
-  listed: { wallet: string; netUsd: number | null; record: WalletRecord }[],
-  correction: "BH" | "Bonferroni" = "BH",
-): WalletCheck {
-  const alpha = SETTINGS.alpha,
-    min = SETTINGS.walletRecord.minBets,
-    eligible = listed.filter((l) => l.record.bets.length >= min),
-    m = eligible.length,
-    bar = m ? alpha / m : null;
-  const rows: WalletCheckRow[] = listed.map((l) => ({
-    wallet: l.wallet,
-    netUsd: l.netUsd,
-    record: l.record,
-    label: l.record.bets.length < min ? "too-few-bets" : "nothing-unusual",
-    q: null,
-    fragile: null,
-    fragileP: null,
-  }));
-  const tested = rows.filter((r) => {
-    if (r.label === "too-few-bets") return false;
-    if (bar !== null && (r.record.allWinChance ?? 1) > bar + 1e-15) {
-      r.label = "record-too-short";
-      return false;
-    }
-    return true;
-  });
-  let threshold = 0;
-  if (tested.length) {
-    const ps = tested.map((r) => r.record.p!);
-    if (correction === "BH") {
-      const bh = benjaminiHochberg(ps, alpha);
-      threshold = bh.threshold;
-      tested.forEach((r, i) => {
-        r.q = bh.q[i];
-        if (bh.rejected[i]) r.label = "unusual-record";
-      });
-    } else {
-      threshold = alpha / tested.length;
-      tested.forEach((r) => {
-        r.q = Math.min(1, r.record.p! * tested.length);
-        if (r.record.p! <= threshold + 1e-15) r.label = "unusual-record";
-      });
-    }
-    for (const r of tested.filter((r) => r.label === "unusual-record")) {
-      const wins = r.record.bets.filter((b) => b.won);
-      const surprising = wins.reduce((a, b) => (b.fair < a.fair ? b : a));
-      const rest = scoreRecord(r.wallet, r.record.bets.filter((b) => b !== surprising));
-      r.fragileP = rest.p;
-      r.fragile = rest.p === null || rest.p > threshold + 1e-15;
-    }
-  }
-  return { rows, m, prefilterBar: bar, tested: tested.length, threshold, correction };
-}
-
-/* ------------------------------------------------------------- listing */
-
-/** Net dollars behind the favored side in [from, to): favored buys + other sells − reverse. */
-export function netBehind(allSideFills: Fill[], favored: 0 | 1, from: number, to: number) {
-  const net = new Map<string, number>();
-  for (const f of allSideFills) {
-    if (f.timestamp < from || f.timestamp >= to) continue;
-    const usd = f.price * f.size,
-      backs = (f.outcome === favored) === (f.side === "BUY");
-    net.set(f.wallet, (net.get(f.wallet) || 0) + (backs ? usd : -usd));
-  }
-  return net;
-}
-
-export function listWallets(
-  allSideFills: Fill[],
-  move: BigMove | null,
-  winners: Bet[] | null,
-  winningHoldings?: Map<string, number>,
-) {
-  const { count, minNetUsd } = SETTINGS.walletList;
-  if (move) {
-    const net = netBehind(allSideFills, move.favored, move.startTime - W * HOUR, move.startTime);
-    return [...net]
-      .filter(([, v]) => v >= minNetUsd)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, count)
-      .map(([wallet, netUsd]) => ({ wallet, netUsd }));
-  }
-  const holdings = winningHoldings ?? new Map((winners ?? []).map((b) => [b.wallet, b.cost]));
-  return [...holdings]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, count)
-    .map(([wallet]) => ({ wallet, netUsd: null as number | null }));
-}
-
-/* ------------------------------------------------------------ percentile */
-
-export function percentile(score: number, comparable: number[]) {
-  if (!comparable.length) return { percentile: null, compared: 0 };
-  return {
-    percentile: comparable.filter((c) => c < score).length / comparable.length,
-    compared: comparable.length,
-  };
-}
-
-/* ------------------------------------------------------- multi-market */
-
-export interface MultiRow {
-  condition: string;
-  test: MarketTest;
-  status: "tested" | "not-testable" | "history-too-short";
-  q: number | null;
-  flagged: boolean;
-}
-
-/** Multi-market steps 2–4: set aside not testable, iterative pre-filter, BH. */
-export function multiMarket(items: { condition: string; test: MarketTest }[]) {
-  const rows: MultiRow[] = items.map((i) => ({
-    condition: i.condition,
-    test: i.test,
-    status: i.test.verdict === "not-testable" ? "not-testable" : "tested",
-    q: null,
-    flagged: false,
-  }));
-  const steps: number[] = [];
-  for (;;) {
-    const live = rows.filter((r) => r.status === "tested"),
-      M = live.length;
-    steps.push(M);
-    const drop = live.filter((r) => r.test.comparisonWindows < 20 * M);
-    if (!drop.length || !M) break;
-    for (const r of drop) r.status = "history-too-short";
-  }
-  const live = rows.filter((r) => r.status === "tested"),
-    bh = benjaminiHochberg(live.map((r) => r.test.p!));
-  live.forEach((r, i) => {
-    r.q = bh.q[i];
-    r.flagged = bh.rejected[i];
-  });
-  rows.sort((a, b) => (a.q ?? 2) - (b.q ?? 2));
-  return { rows, M: live.length, mSteps: steps, threshold: bh.threshold, k: bh.k };
-}
-
-/* ------------------------------------------------------- excess rate */
-
-export function excessRate(observedHits: number, markets: number, placeboRate: number) {
-  if (!markets) return null;
-  const rate = observedHits / markets,
-    margin = 1.96 * Math.sqrt((rate * (1 - rate)) / markets),
-    excess = rate - placeboRate;
-  return {
-    observedRate: rate,
-    placeboRate,
-    excess,
-    low: excess - margin,
-    high: excess + margin,
-    evidence: excess - margin > 0,
   };
 }
 
@@ -731,80 +446,4 @@ export function randomTimePlacebo(markets: LibraryMarket[], runs: number = SETTI
         : null,
     categories,
   };
-}
-
-/** Placebo 2: fake-wallet twins built from other wallets' bets at prices within 1¢. */
-export function fakeWalletPlacebo(
-  markets: LibraryMarket[],
-  library: Bet[],
-  cal: Calibration | null,
-  runs: number = SETTINGS.placeboRuns,
-  seed = 2,
-) {
-  const rng = seededRandom(seed),
-    index = indexBets(library),
-    sorted = [...library].sort((a, b) => a.price - b.price);
-  const near = (b: Bet) => {
-    let lo = 0,
-      hi = sorted.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (sorted[mid].price < b.price - 0.01) lo = mid + 1;
-      else hi = mid;
-    }
-    const out: Bet[] = [];
-    for (let i = lo; i < sorted.length && sorted[i].price <= b.price + 0.01; i++)
-      if (sorted[i].wallet !== b.wallet && sorted[i].event !== b.event) out.push(sorted[i]);
-    return out;
-  };
-  let realFlags = 0;
-  const realChecks = markets.map((m) => {
-    const exclude = new Set([m.event]);
-    const records = m.listed.map((l) => ({ ...l, record: walletRecord(l.wallet, index, exclude, cal) }));
-    const check = walletCheck(records);
-    realFlags += check.rows.filter((r) => r.label === "unusual-record").length;
-    return records;
-  });
-  let fakeTotal = 0;
-  for (let run = 0; run < runs; run++)
-    for (const records of realChecks) {
-      const fakes = records.map((r) => {
-        const bets = r.record.bets.map((b) => {
-          const pool = near(b);
-          const pick = pool.length ? pool[Math.floor(rng() * pool.length)] : b;
-          return { ...pick, fair: fairChance(pick.price, cal) };
-        });
-        return { wallet: `fake:${r.wallet}`, netUsd: r.netUsd, record: scoreRecord(`fake:${r.wallet}`, bets) };
-      });
-      fakeTotal += walletCheck(fakes).rows.filter((r) => r.label === "unusual-record").length;
-    }
-  const meanFake = runs ? fakeTotal / runs : 0;
-  const rate = realFlags ? meanFake / realFlags : null;
-  return {
-    runs,
-    seed,
-    realFlags,
-    meanFakeFlags: meanFake,
-    falseFlagRate: rate,
-    correction: (rate !== null && rate > CALIBRATION_LIMIT ? "Bonferroni" : "BH") as "BH" | "Bonferroni",
-  };
-}
-
-/** Optional power test: plant 1× and 3× cushion of backing (or +3¢/+10¢ drift). */
-export function plantedBuying(markets: LibraryMarket[]) {
-  const clean = markets.filter((m) => m.series && m.test.verdict === "nothing-unusual" && m.test.move);
-  const levels = [1, 3].map((mult) => {
-    let switched = 0;
-    for (const m of clean) {
-      const t = m.test,
-        extra =
-          t.scoreType === "aggressor-flow"
-            ? { backing: mult * (t.cushion ?? 0) }
-            : { driftCents: mult === 1 ? 3 : 10 };
-      const r = scoreAtHour(m.series!, t.move!.hour, t.move!.favored, t.scoreType, extra);
-      if (r && r.p <= SETTINGS.alpha + 1e-12) switched++;
-    }
-    return { multiple: mult, markets: clean.length, switched, power: clean.length ? switched / clean.length : null };
-  });
-  return levels;
 }

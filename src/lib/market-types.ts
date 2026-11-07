@@ -93,14 +93,3 @@ export interface ParticipantAudit {
   reason: string;
   provenance?: Provenance;
 }
-export interface PrimaryMarket {
-  condition: string;
-  title: string;
-  eventSlug: string;
-  fills: number;
-  buyNotional: number;
-  turnover: number;
-  turnoverShare: number;
-  realizedPnl: number | null;
-  heldShares: number | null;
-}
