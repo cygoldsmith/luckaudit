@@ -94,7 +94,12 @@ export const CALIBRATION_LIMIT = 0.1;
 export const LIMITS = {
   takerPages: 150,
   allSidesPages: 150,
-  libraryMaxMarkets: 400,
+  /**
+   * Raised from 400 on 2026-11-07 after the first build showed most markets
+   * are not testable (no qualifying sudden move). This is a size limit only;
+   * it does not look at outcomes, and the nine settings are unchanged.
+   */
+  libraryMaxMarkets: 5000,
   sessionSearchesBeforeHint: 5,
 };
 

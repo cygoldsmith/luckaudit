@@ -307,7 +307,7 @@ function MethodCheck({ library }: { library: Library | null }) {
         <div className="inline-notice warning">
           <Info size={15} />
           Only {library.built} library markets are built. Run <code>npm run library -- --discover</code> with the dev
-          server up to pull the full sample ({LIMITS.libraryMaxMarkets} markets); until then these rates are not reliable.
+          server up to pull every eligible market (up to {LIMITS.libraryMaxMarkets.toLocaleString()}); until then these rates are not reliable.
         </div>
       ) : null}
       <section className="audit-stats market-audit-stats">

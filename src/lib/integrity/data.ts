@@ -413,7 +413,13 @@ export function sampleLibrary<T extends { condition: string; category: CategoryI
 export async function buildLibraryStep(count = 3) {
   const index = await readJson<LibraryIndex>(indexFile());
   if (!index) throw new DataError("Discover the library first.", 409);
-  const built = new Set((await readLibrary()).map((r) => r.condition));
+  // Count built markets from file names: re-reading every record each step
+  // would make a large build quadratic.
+  let files: string[] = [];
+  try {
+    files = await readdir(/* turbopackIgnore: true */ libDir);
+  } catch {}
+  const built = new Set(files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -5)));
   const todo = index.candidates.filter((c) => !built.has(c.condition) && !index.failed[c.condition]).slice(0, count);
   const done: string[] = [];
   for (const c of todo) {
@@ -435,7 +441,14 @@ export async function buildLibraryStep(count = 3) {
   }
   await writeJson(indexFile(), index);
   libraryCache = null;
-  return { processed: done.length, remaining: index.candidates.length - built.size - done.length - Object.keys(index.failed).length, status: await libraryStatus() };
+  const candidates = new Set(index.candidates.map((c) => c.condition)),
+    builtCandidates = [...built].filter((c) => candidates.has(c)).length + done.length,
+    failed = Object.keys(index.failed).length;
+  return {
+    processed: done.length,
+    remaining: index.candidates.length - builtCandidates - failed,
+    status: { candidates: index.candidates.length, built: builtCandidates, failed },
+  };
 }
 
 /* --------------------------------------------------------- method check */

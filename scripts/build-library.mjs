@@ -37,7 +37,6 @@ for (;;) {
     `built ${s.built}/${s.candidates}`,
     `failed ${s.failed}`,
     `remaining ${step.remaining}`,
-    JSON.stringify(s.byCategory),
   );
   if (!step.processed && step.remaining <= 0) break;
 }
