@@ -5515,3 +5515,110 @@ select {
 .method-advanced-body .analysis-grid {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* Compare markets: category, status and date range on one row. */
+.integrity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+}
+.integrity-filters > label {
+  min-width: 200px;
+}
+.integrity-filters > .segmented {
+  align-self: flex-end;
+}
+.integrity-filters select,
+.integrity-filters input {
+  height: 40px;
+  box-sizing: border-box;
+}
+.integrity-filters > .segmented button {
+  height: 34px;
+}
+.date-range {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.date-range legend {
+  padding: 0;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.date-range > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.date-range > div > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.date-range input {
+  min-height: 36px;
+}
+@media (max-width: 760px) {
+  .integrity-filters > label,
+  .date-range {
+    width: 100%;
+  }
+  .date-range input {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* Compare markets results: titles wrap, numbers and verdicts stay whole. */
+.compare-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 860px;
+  white-space: normal;
+}
+.compare-table th:nth-child(1) { width: auto; }
+.compare-table th:nth-child(2) { width: 190px; }
+.compare-table th:nth-child(3) { width: 120px; }
+.compare-table th:nth-child(4) { width: 110px; }
+.compare-table th:nth-child(5) { width: 110px; }
+.compare-table th:nth-child(6) { width: 110px; }
+.compare-table th {
+  height: auto;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  vertical-align: bottom;
+}
+.compare-table .evidence-link {
+  display: inline;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.compare-table .evidence-link > svg {
+  display: inline;
+  vertical-align: -1px;
+  margin-left: 4px;
+}
+.compare-table td {
+  white-space: normal;
+}
+.compare-table .integrity-label {
+  display: inline-block;
+  white-space: normal;
+  line-height: 1.35;
+  max-width: 100%;
+}
+.integrity-filters > label > select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.integrity-filters,
+.date-range > div {
+  min-width: 0;
+}

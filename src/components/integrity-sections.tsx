@@ -100,16 +100,14 @@ export function MultiSearch() {
                 </button>
               </div>
               {state === "closed" ? (
-                <>
-                  <label>
-                    Resolved from
-                    <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                  </label>
-                  <label>
-                    to
-                    <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-                  </label>
-                </>
+                <fieldset className="date-range">
+                  <legend>Resolved between</legend>
+                  <div>
+                    <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Start date" />
+                    <span>and</span>
+                    <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="End date" />
+                  </div>
+                </fieldset>
               ) : null}
             </div>
           )}
@@ -149,7 +147,7 @@ export function MultiSearch() {
             </div>
           </div>
           <div className="table-scroll">
-            <table className="records-table">
+            <table className="records-table compare-table">
               <thead>
                 <tr>
                   <th>Market</th>
