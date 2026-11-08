@@ -5619,3 +5619,211 @@ select {
 .plain-report-bullets li::marker {
   color: var(--muted);
 }
+
+/* ================================================================
+   Method page: a calm document. One left edge, neutral surfaces,
+   hierarchy from size + weight + space, no status colour.
+   ================================================================ */
+.method-page .method-hero {
+  margin: 8px 0 28px;
+}
+.method-page .method-hero h1 {
+  font-size: clamp(30px, 3.4vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  margin: 0;
+}
+.method-page .method-hero p {
+  margin: 10px 0 0;
+  font-size: 17px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  color: var(--text-2);
+  max-width: 60ch;
+}
+
+/* Key figures: four numbers, one line each. */
+.method-figures {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 20px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+  animation: rise-in var(--settle-duration) var(--ease-spring) both;
+}
+.method-figures > div {
+  background: var(--surface);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.method-figures dd {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.method-figures dt {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* The four sections: title column + bullets. */
+.method-doc {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  padding: 0 32px;
+  animation: rise-in var(--settle-duration) var(--ease-spring) 40ms both;
+}
+.method-doc section {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 32px;
+  padding: 28px 0;
+}
+.method-doc section + section {
+  border-top: 1px solid var(--line);
+}
+.method-doc h2 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+.method-doc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 14px;
+}
+.method-doc li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2);
+  max-width: 72ch;
+}
+.method-doc li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.68em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.method-note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 80ch;
+}
+
+/* Advanced statistics: a full-width disclosure row on the same edge. */
+.method-page .method-advanced {
+  max-width: none;
+  margin: 28px 0 0;
+  text-align: left;
+}
+.method-disclosure {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-spring), transform var(--press-duration) ease-out;
+}
+.method-disclosure:hover {
+  background: var(--surface-2);
+}
+.method-disclosure:active {
+  transform: scale(0.995);
+}
+.method-disclosure > span {
+  display: grid;
+  gap: 2px;
+}
+.method-disclosure strong {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.method-disclosure small {
+  font-size: 13px;
+  color: var(--muted);
+}
+.method-disclosure > svg {
+  color: var(--muted);
+  flex: none;
+  transition: transform 250ms var(--ease-spring);
+}
+.method-disclosure.open > svg {
+  transform: rotate(180deg);
+}
+.method-page .method-advanced-body {
+  max-width: none;
+  margin: 20px 0 0;
+}
+
+@media (max-width: 900px) {
+  .method-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .method-doc section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .method-doc {
+    padding: 0 20px;
+  }
+  .method-doc section {
+    padding: 22px 0;
+  }
+  .method-figures > div {
+    padding: 16px;
+  }
+  .method-figures dd {
+    font-size: 26px;
+  }
+  .method-disclosure {
+    padding: 16px 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .method-figures,
+  .method-doc {
+    animation: none;
+  }
+  .method-disclosure,
+  .method-disclosure > svg {
+    transition: none;
+  }
+}
