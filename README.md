@@ -26,27 +26,9 @@ We also tested the tool on thousands of fake traders built from random real bets
 
 A flag means a record is unlikely under the market's odds. That can come from skill, fast reactions to public news, automated trading, or inside information, and the tool can't tell which. **It is never an accusation.** Traders are shown only by shortened wallet address.
 
-## Run it locally
-
-Requires Node.js 22 or later.
-
-```sh
-npm install
-npm run dev -- --port 3000
-```
-
-Then open http://localhost:3000.
-
-To rebuild the market library yourself (this takes a few hours, and you can stop and resume it):
-
-```sh
-npm run library -- --discover
-```
-
 ## Limits
 
 - A trader with only a few bets can't be judged, so a one-time insider using a new wallet won't show up.
 - One person using many wallets looks like many ordinary traders.
 - Results describe the markets in our library: finished Polymarket markets with at least $10,000 traded over the past six months.
 
-For the full statistical details, see [docs/methodology.md](docs/methodology.md).
