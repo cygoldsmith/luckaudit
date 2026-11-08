@@ -302,9 +302,9 @@ export function methodPlainSummary(summary: LibrarySummary, check: MethodCheckDa
     r20 = recall(20, 4);
 
   const howItWorks = [
-    `We collected every trade in ${summary.markets.toLocaleString()} resolved Polymarket markets from the last six months and compared how often each wallet's bets won with how often they should have won at the prices it paid. Cheap bets that keep winning are what's hard to explain by luck.`,
+    `Every wallet gets a track record from its bets in ${summary.markets.toLocaleString()} resolved Polymarket markets from the last six months: how often its bets won compared with how often they should have won at the prices it paid. Cheap bets that keep winning are what's hard to explain by luck.`,
     `A wallet is flagged only if its record is extremely unlikely to be luck after accounting for checking ${summary.tested.toLocaleString()} wallets at once, and only if it still holds up without its single best bet.`,
-    "A market is judged by how many of its traders are flagged, compared with what's normal for that kind of market. Its own price moves never decide the verdict.",
+    "Any market, open or closed, is judged by its traders: we count how many have flagged track records and compare that with what's normal for its category. A market's own price moves never decide the verdict.",
   ];
 
   const reliability =
@@ -339,7 +339,7 @@ export function methodPlainSummary(summary: LibrarySummary, check: MethodCheckDa
   const limitations = [
     "One-time insiders with fresh wallets have no record to test, and one person can split activity across many wallets.",
     "A flagged record is consistent with skill, speed, or inside information. The tool cannot tell which.",
-    `It is built to be sure rather than sensitive: a strong edge over 50 bets is caught ${r50 === null ? "—" : pct(r50)} of the time, over 20 bets ${r20 === null ? "—" : pct(r20)}, and with 10 bets or fewer almost never. Results cover resolved markets with at least $10k volume over six months.`,
+    `It is built to be sure rather than sensitive: a strong edge over 50 bets is caught ${r50 === null ? "—" : pct(r50)} of the time, over 20 bets ${r20 === null ? "—" : pct(r20)}, and with 10 bets or fewer almost never. Track records come only from resolved markets with at least $10k volume over six months, so traders in an open market are judged on their past bets, not the ones still in play.`,
   ];
 
   return {

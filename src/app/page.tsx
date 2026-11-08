@@ -291,7 +291,7 @@ export default function MarketExplorer() {
                       {m.closed ? "Resolved" : m.active ? "Live" : "—"}
                     </span>
                     <Link className="market-investigate-link" href={`/market/${m.condition}`}>
-                      {m.closed ? "Integrity test" : "Investigate"}
+                      Check traders
                       <ArrowRight size={13} />
                     </Link>
                   </div>

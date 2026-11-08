@@ -56,4 +56,4 @@ npm run dev -- --port 3000
 npm run library -- --discover   # discover candidates, then build until done (resumable)
 ```
 
-Pages: a market's **Integrity test** tab (single search) and `/integrity` (multi-market search, method check, the nine settings). APIs: `GET /api/integrity/:condition`, `POST /api/integrity/multi`, `GET|POST /api/integrity/library`, `GET /api/integrity/method-check`.
+This test is now context only: it appears in a market's **Trader check** tab under "Pre-move buying in this market" and as the Pre-move p column in Compare markets. The verdict comes from wallets (see [methodology.md](methodology.md)). Settings and the method check are on the Method page under **Show the advanced statistics**. APIs: `GET /api/integrity/:condition`, `POST /api/integrity/multi`, `GET|POST /api/integrity/library`, `GET /api/integrity/method-check`.

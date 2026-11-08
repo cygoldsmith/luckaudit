@@ -2,21 +2,23 @@
 
 **Which wallets keep winning in ways luck can't explain, and which markets do they trade in?**
 
-LuckAudit audits Polymarket wallets. A wallet is flagged only when its record on resolved bets is too good to be luck under calibrated market odds, at a 5% false discovery rate. Pick any market, and LuckAudit checks its participating wallets against that population. It then reports whether unusually many of them have anomalous records. Every result comes with a measured false-flag rate.
+LuckAudit audits Polymarket wallets. A wallet is flagged only when its record on resolved bets is too good to be luck under calibrated market odds, at a 5% false discovery rate. Any market, open or closed, is then judged by its traders: LuckAudit counts how many have flagged records and compares that with what's normal for the market's category. Every result comes with a measured false-flag rate.
 
 Built at **HackBU 2026 – NYCAIRR**, track: **Markets & Networks** (transparency and fairness in financial and information systems).
 
 ## What it does
 
-1. **Wallet audit.** Every wallet in a 180-day library of resolved markets gets:
+1. **Wallet lookup.** Paste an address, @username or profile link. Every wallet in a 180-day library of 5,000 resolved markets gets:
    - **Test 1:** an exact Poisson-binomial test of its wins against calibrated odds.
    - **Test 2:** a timing test of how often it entered just before price jumps.
    - **Robustness:** a leave-one-event-out check and a tier (strong anomaly, anomaly, or weak).
-2. **Market verdict.** A market's top wallets by volume are looked up in that population. Each flagged wallet is re-tested without this market, so no wallet is flagged because of the market being checked. The count of flagged wallets is then compared with the population rate.
+   - Wallets outside the library get the same exact test on their own resolved bets.
+2. **Market verdict (Trader check tab).** A market's top wallets by volume are looked up in that population. Each flagged wallet is re-tested without this market, so no wallet is flagged because of the market being checked. The count of flagged wallets is compared with the rate in other markets of the same category:
    - **Elevated participation by anomalous wallets**, or
    - **Typical participation**, or
    - **Not enough testable wallets**.
-3. **Several markets at once.** Benjamini–Hochberg across the markets stops extra searches from creating false alarms.
+3. **Compare markets.** Paste up to 25 markets, or check a whole category: **Closed** uses the resolved library markets (optionally between two dates), **Open** uses the 20 most-traded live markets and their current top holders. Benjamini–Hochberg across the markets stops extra searches from creating false alarms.
+4. **Method.** A plain-English summary of how it works, what it found and its limits, with the full validation statistics one click away.
 
 Paste a polymarket.com link or condition ID into the search bar. A polymarket.us link (the separate US exchange, whose trades are not public) is matched to the same event on the main exchange.
 
@@ -30,7 +32,7 @@ The event's theme is AI responsibility. These rules are built into the tool:
 - **Parameters fixed in advance.** The wallet method's parameters in `src/lib/integrity/settings.ts` are the Advanced spec's defaults (written Nov 6), unchanged. Every later change is listed in `CHANGE_LOG` with its reason.
 - **Records from resolved markets only.** Wallet records use only resolved bets; a market's own trades never flag a wallet.
 - **Privacy.** Wallets are shown as shortened addresses, with no attempt to link them to people.
-- **Local AI only.** Optional plain-English explanations run on a local model through Ollama. No data is sent to an outside AI service, and the AI can only cite evidence the statistics computed.
+- **No AI needed.** Reports are written from the computed numbers by templates. An optional explanation can run on a local model through Ollama; no data is sent to an outside AI service, and the AI can only cite evidence the statistics computed.
 
 ## How it works
 
@@ -41,7 +43,7 @@ The event's theme is AI responsibility. These rules are built into the tool:
 | Test 1 | Exact Poisson-binomial p for observed wins; Tarone pre-filter; Benjamini–Hochberg at 5%; BY-robust badge |
 | Test 2 | First entries within 6 h before favorable +10-point jumps, against other wallets' entry rate |
 | Robustness | Leave-one-event-out; tiers; edge profile (high-volume vs concentrated longshot) |
-| Market verdict | Flagged tested participants vs population rate, exact binomial; BH across markets |
+| Market verdict | Flagged tested participants vs the same-category rate, exact binomial; BH across markets |
 | Validation | Matched-twin placebo (empirical FDR), simulated outcomes, injected wallets (power), crypto control, timing placebo |
 
 Full method: [docs/methodology.md](docs/methodology.md). Pre-move timing context: [docs/market-integrity-method.md](docs/market-integrity-method.md).
@@ -59,9 +61,9 @@ npm install
 npm run dev -- --port 3000
 ```
 
-Open http://localhost:3000. Open any market and select its **Integrity test** tab, or go to **Integrity search** to search several markets and see the validation panel.
+Open http://localhost:3000. Open any market and select its **Trader check** tab, use **Compare markets** to check several at once, **Wallet lookup** for a single wallet, and **Method** for the validation results.
 
-Build the reference library while the dev server is running. It takes a few hours, and you can stop and restart it at any time.
+Build the reference library (it runs on its own, without the dev server, and takes a few hours; you can stop and restart it at any time):
 
 ```sh
 npm run library -- --discover
@@ -77,4 +79,5 @@ Tests: `npm test` and `npm run typecheck`.
 - One-shot insiders are invisible: a fresh wallet with one informed bet has no record to test.
 - One person using many wallets looks like many small, unremarkable records.
 - Only positions held to resolution are scored; early exits are only partly covered by the timing test.
+- Traders in an open market are judged on their past resolved bets, not on the bets still in play.
 - Results apply only to the library this tool built.

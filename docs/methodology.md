@@ -39,20 +39,20 @@ For each market the full trade tape is pulled once, so every wallet is collected
 
 ## Market verdict
 
-1. Take the market's participants: the top 500 wallets by trading volume.
+1. Take the market's participants. For a resolved or pasted market, the top 500 wallets by trading volume. For an open market in a category search, its current top holders (up to 100 per side), valued at today's price.
 2. Look up each participant in the population. A participant counts as **flagged** if it is tier 1 or 2 **and** its Test 1 p, re-computed **without this market's event**, still clears the main run's bar. No wallet is flagged because of this market itself.
-3. With T tested participants and F flagged, the population base rate π is the share of tested wallets in tier 1 or 2. The p-value is the exact binomial P(X ≥ F), with X ~ Binomial(T, π).
+3. With T tested participants and F flagged, the base rate π is the flagged share of tested participations in **other library markets of the same category** (this market left out). If that category has fewer than 50 tested participations, the population rate is used instead. The p-value is the exact binomial P(X ≥ F), with X ~ Binomial(T, π). Category rates differ widely (crypto price markets about 7%, politics about 1.6%), so a pooled rate would mark whole categories as elevated; see `CHANGE_LOG`.
 4. Verdicts:
    - **Elevated participation by anomalous wallets:** p ≤ 0.05.
    - **Typical participation:** otherwise.
    - **Not enough testable wallets:** T < 5.
-5. In multi-market search, the market p-values are corrected together with Benjamini–Hochberg.
+5. In Compare markets, the market p-values are corrected together with Benjamini–Hochberg. A single market's verdict also shows a category check: its p corrected together with every library market in its category.
 
-Live markets can be checked, because participants' records come from other, resolved markets. The Market Integrity Search pre-move buying test is still shown as context for resolved markets, but it never sets the verdict.
+Open markets can be checked, because participants' records come from other, resolved markets. Compare markets offers an Open option (the 20 most-traded live markets in a category) and a Closed option (library markets, optionally filtered by resolution date). The Market Integrity Search pre-move buying test is still shown as context for resolved markets, but it never sets the verdict.
 
 ## Validation
 
-Shown on `/integrity` → Validation:
+Shown on the Method page under **Show the advanced statistics**:
 - **Placebo A.** Matched synthetic twins, built from borrowed positions in the same category group within ±1¢ (±2¢ fallback), from other wallets and other events, over 30 runs. The empirical FDR is the mean twin flags divided by the real flags. Above 10%, BY becomes the primary rule.
 - **Placebo B.** Outcomes redrawn from Bernoulli(q). The mid-p histogram should be flat.
 - **Positive control.** 200 injected wallets copying real price profiles (n = 5, 10, 20, 50; odds ×2 and ×4). Shows the recall per cell.

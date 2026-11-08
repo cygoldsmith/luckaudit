@@ -334,7 +334,7 @@ export default function MarketInvestigation({
                     }}
                   >
                     {value === "integrity"
-                      ? "Integrity test"
+                      ? "Trader check"
                       : value === "overview"
                       ? "Overview"
                       : value === "activity"
@@ -379,9 +379,9 @@ export default function MarketInvestigation({
                     note="Share of observed turnover"
                   />
                   <Stat
-                    title="Pre-move verdict"
-                    value="See test"
-                    note="Integrity test tab: big move, p-value, wallets"
+                    title="Verdict"
+                    value="See Trader check"
+                    note="From traders' records in other markets"
                   />
                 </section>
                 <div className="analysis-grid">
@@ -605,12 +605,12 @@ export default function MarketInvestigation({
                     <div>
                       <h2>Timing before the big move</h2>
                       <p>
-                        The big move, the 6-hour pre-move window and the wallets that backed the favored side are
-                        defined by the prespecified method and tested against every earlier window.
+                        For resolved markets, buying in the 6 hours before a big price move is compared with every
+                        earlier window. It is shown as context in the Trader check tab and never decides the verdict.
                       </p>
                     </div>
                     <button className="outline-button" onClick={() => setTab("integrity")}>
-                      Open the integrity test
+                      Open the trader check
                       <ArrowRight size={14} />
                     </button>
                   </div>
@@ -623,8 +623,8 @@ export default function MarketInvestigation({
                   <div>
                     <h2>Participating traders</h2>
                     <p>
-                      Ranked by observed turnover in this market. History audits
-                      use multiple resolved events.
+                      Ranked by observed turnover in this market. Each trader&apos;s record comes from their bets
+                      in other, resolved markets.
                     </p>
                   </div>
                   <div className="simulation-actions">
