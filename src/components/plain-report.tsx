@@ -24,9 +24,15 @@ export default function PlainReportView({ report, generatedAt }: { report: Plain
       {report.sections.map((s) => (
         <section key={s.heading}>
           <h3>{s.heading}</h3>
-          {s.body.map((t, i) => (
-            <p key={i}>{t}</p>
-          ))}
+          {report.bulleted ? (
+            <ul className="plain-report-bullets">
+              {s.body.map((t, i) => (
+                <li key={i}>{t}</li>
+              ))}
+            </ul>
+          ) : (
+            s.body.map((t, i) => <p key={i}>{t}</p>)
+          )}
         </section>
       ))}
 
@@ -51,26 +57,30 @@ export default function PlainReportView({ report, generatedAt }: { report: Plain
         </section>
       ) : null}
 
-      <details className="plain-report-technical">
-        <summary>Show the statistics</summary>
-        <dl>
-          {report.technical.map((t) => (
-            <div key={t.label}>
-              <dt>{t.label}</dt>
-              <dd>{t.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
+      {report.technical.length ? (
+        <details className="plain-report-technical">
+          <summary>Show the statistics</summary>
+          <dl>
+            {report.technical.map((t) => (
+              <div key={t.label}>
+                <dt>{t.label}</dt>
+                <dd>{t.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      ) : null}
 
-      <section>
-        <h3>What this can&apos;t tell you</h3>
-        <ul className="plain-report-limits">
-          {report.limits.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
-      </section>
+      {report.limits.length ? (
+        <section>
+          <h3>What this can&apos;t tell you</h3>
+          <ul className="plain-report-limits">
+            {report.limits.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <footer className="plain-report-foot">
         Written from computed results, not by AI. Statistical anomaly under market odds; consistent with skill, speed, or

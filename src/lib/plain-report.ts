@@ -12,6 +12,8 @@ export interface PlainReport {
   title: string;
   verdict: string;
   tone: "alert" | "calm" | "muted";
+  /** Render each section body as a bulleted list. */
+  bulleted?: boolean;
   sections: { heading: string; body: string[] }[];
   items?: { heading: string; rows: { label: string; detail: string; href?: string }[] };
   technical: { label: string; value: string }[];
@@ -290,79 +292,57 @@ export function methodPlainSummary(summary: LibrarySummary, check: MethodCheckDa
     anomalies = summary.tiers[1] + summary.tiers[2],
     recall = (n: number, or: number) => check.positiveControl.find((c) => c.n === n && c.or === or)?.recall ?? null,
     study = summary.categories.filter((c) => c.id !== "control"),
-    control = summary.categories.find((c) => c.id === "control"),
     nc = check.negativeControl,
     fitted = check.calibration.filter((b) => b.usesFit && b.meanPrice !== null && b.winRate !== null),
-    maxGap = fitted.reduce((m, b) => Math.max(m, Math.abs(b.winRate! - b.meanPrice!)), 0),
-    cheapest = fitted[0];
+    maxGap = fitted.reduce((m, b) => Math.max(m, Math.abs(b.winRate! - b.meanPrice!)), 0);
   const elevatedStudyAlone = study.reduce((s, c) => s + c.elevatedAlone, 0),
     testableStudy = study.reduce((s, c) => s + c.testable, 0),
     elevatedCorrected = summary.categories.reduce((s, c) => s + c.elevatedCorrected, 0);
   const r50 = recall(50, 4),
     r20 = recall(20, 4);
 
-  const wrong = [
+  const howItWorks = [
+    `We collected every trade in ${summary.markets.toLocaleString()} resolved Polymarket markets from the last six months and compared how often each wallet's bets won with how often they should have won at the prices it paid. Cheap bets that keep winning are what's hard to explain by luck.`,
+    `A wallet is flagged only if its record is extremely unlikely to be luck after accounting for checking ${summary.tested.toLocaleString()} wallets at once, and only if it still holds up without its single best bet.`,
+    "A market is judged by how many of its traders are flagged, compared with what's normal for that kind of market. Its own price moves never decide the verdict.",
+  ];
+
+  const reliability =
     a.fdr === null
       ? "We haven't measured the false-alarm rate yet."
       : a.meanFlags === 0
-        ? `We built fake wallets from random real bets and ran the full check on them ${a.runs} times. It flagged none of them, while it flagged ${a.realFlags} real wallets.`
-        : `We built fake wallets from random real bets and ran the full check on them ${a.runs} times. On average it flagged ${a.meanFlags.toFixed(1)} of them, against ${a.realFlags} real wallets, so about ${pct(a.fdr)} of flags may be false alarms.`,
-    check.timingPlacebo.meanFlags < 0.5
-      ? "When we shuffled when wallets entered markets, the timing check flagged essentially nothing, so its timing flags aren't an artifact."
-      : `When we shuffled when wallets entered markets, the timing check still flagged about ${check.timingPlacebo.meanFlags.toFixed(1)} wallets.`,
-    check.placeboB.flags === 0
-      ? "When we replaced every real outcome with a coin flip weighted by its price, nothing was flagged, which confirms the arithmetic."
-      : `When we replaced every real outcome with a coin flip weighted by its price, ${check.placeboB.flags} wallets were still flagged.`,
-  ];
-
-  const found = [
-    `${summary.tested.toLocaleString()} wallets had enough bets to judge. ${anomalies} of them have records very unlikely to be luck, and ${summary.tiers[3]} more show something that doesn't hold up under our stricter checks.`,
+        ? `When we ran the full check ${a.runs} times on fake wallets built from random real bets, it flagged none of them.`
+        : `When we ran the full check ${a.runs} times on fake wallets built from random real bets, it flagged ${a.meanFlags.toFixed(1)} on average, so about ${pct(a.fdr)} of flags may be false alarms.`;
+  const findings = [
+    `${summary.tested.toLocaleString()} wallets had enough bets to judge. ${anomalies} have records very unlikely to be luck, and ${summary.tiers[3]} more show something that doesn't hold up under our stricter checks.`,
+    `${reliability} Market prices are fair odds: across ${fitted.length} price ranges, how often shares won stays within ${Math.round(maxGap * 100)} points of their price.`,
   ];
   if (nc.study.per1000 !== null && nc.control.per1000 !== null)
-    found.push(
-      `The surprise: wallets trading crypto price markets, where inside information is essentially impossible, are flagged more often (${nc.control.per1000.toFixed(0)} per 1,000) than wallets in politics, awards and announcements (${nc.study.per1000.toFixed(0)} per 1,000). So most "too lucky" records are better explained by skill, speed or automation than by inside information.`,
+    findings.push(
+      `Wallets in crypto price markets, where inside information is essentially impossible, are flagged more often (${nc.control.per1000.toFixed(0)} per 1,000) than wallets in politics, awards and announcements (${nc.study.per1000.toFixed(0)} per 1,000). Most "too lucky" records are better explained by skill, speed or automation than by inside information.`,
     );
-  found.push(
-    `For individual markets: ${elevatedStudyAlone} of ${testableStudy.toLocaleString()} politics, awards and announcement markets look unusual on their own, fewer than chance alone would produce. ${
+
+  const rates = summary.categories
+    .filter((c) => c.flaggedRate !== null)
+    .map((c) => `${c.label} ${(c.flaggedRate! * 100).toFixed(1)}%`)
+    .join(", ");
+  const markets = [
+    `${elevatedStudyAlone} of ${testableStudy.toLocaleString()} politics, awards and announcement markets look unusual on their own, fewer than chance alone would produce. ${
       elevatedCorrected === 0
         ? "Once we account for checking so many markets, none stands out."
         : `Once we account for checking so many markets, ${elevatedCorrected} still stand out.`
     }`,
-  );
+    `Share of tested traders flagged, by category: ${rates}.`,
+    "Each market is compared only with markets of its own category, so crypto's higher rate never makes a politics or awards market look suspicious.",
+  ];
 
-  const sections: PlainReport["sections"] = [
-    {
-      heading: "How it works",
-      body: [
-        `1. We collected every trade in ${summary.markets.toLocaleString()} resolved Polymarket markets from the last six months, covering ${summary.wallets.toLocaleString()} wallets.`,
-        "2. For each wallet, we compare how often its bets won with how often they should have won given the prices it paid. Cheap bets that keep winning are what's hard to explain by luck.",
-        `3. We flag a wallet only if its record is extremely unlikely to be luck after accounting for the fact that we checked ${summary.tested.toLocaleString()} wallets, and only if it still holds up without its single best bet.`,
-        "4. For any market, we count how many of its traders are flagged and compare that with what's normal for that kind of market.",
-      ],
-    },
-    { heading: "How often are we wrong?", body: wrong },
-    {
-      heading: "What it can and can't catch",
-      body: [
-        `We planted a fake edge into copies of real wallets. A wallet with about 50 bets and a strong edge (4× better odds than the price) is caught ${r50 === null ? "—" : pct(r50)} of the time; with 20 bets, ${r20 === null ? "—" : pct(r20)}.`,
-        "With 10 bets or fewer, even a strong edge is almost never caught. That's the price of rarely raising false alarms: the check is built to be sure rather than sensitive.",
-      ],
-    },
-    { heading: `What we found across ${summary.markets.toLocaleString()} markets`, body: found },
-    {
-      heading: "Are market prices fair odds?",
-      body: [
-        `Mostly, yes. Across ${fitted.length} price ranges, how often shares actually won stays within ${Math.round(maxGap * 100)} points of their price.${
-          cheapest
-            ? ` The cheapest shares (${Math.round(cheapest.low * 100)}–${Math.round(cheapest.high * 100)}¢) won ${(cheapest.winRate! * 100).toFixed(1)}% of the time.`
-            : ""
-        } Where prices and results differ, we use whichever is kinder to the wallet, so a trader is never flagged just for buying shares the market underpriced.`,
-      ],
-    },
+  const limitations = [
+    "One-time insiders with fresh wallets have no record to test, and one person can split activity across many wallets.",
+    "A flagged record is consistent with skill, speed, or inside information. The tool cannot tell which.",
+    `It is built to be sure rather than sensitive: a strong edge over 50 bets is caught ${r50 === null ? "—" : pct(r50)} of the time, over 20 bets ${r20 === null ? "—" : pct(r20)}, and with 10 bets or fewer almost never. Results cover resolved markets with at least $10k volume over six months.`,
   ];
 
   return {
-    eyebrow: "Method summary",
     title: "How LuckAudit works, and how far to trust it",
     verdict:
       a.fdr === 0
@@ -371,26 +351,14 @@ export function methodPlainSummary(summary: LibrarySummary, check: MethodCheckDa
           ? "Validation not yet measured"
           : `About ${pct(a.fdr)} of flags may be false alarms`,
     tone: a.fdr !== null && a.fdr <= 0.1 ? "calm" : "muted",
-    sections,
-    items: {
-      heading: "By category",
-      rows: summary.categories.map((c) => ({
-        label: c.label,
-        detail: `${c.markets.toLocaleString()} markets. ${c.flaggedRate === null ? "" : `${(c.flaggedRate * 100).toFixed(1)}% of tested traders flagged. `}${c.elevatedAlone} look unusual on their own; ${c.elevatedCorrected} after accounting for multiple checks.`,
-      })),
-    },
-    technical: [
-      { label: "Library", value: `${summary.markets.toLocaleString()} markets · ${summary.wallets.toLocaleString()} wallets · ${summary.tested.toLocaleString()} tested` },
-      { label: "Tiers (strong / anomaly / weak)", value: `${summary.tiers[1]} / ${summary.tiers[2]} / ${summary.tiers[3]}` },
-      { label: "Placebo A (matched twins)", value: `${a.meanFlags.toFixed(2)} twin flags vs ${a.realFlags} real · FDR ${a.fdr === null ? "—" : pct(a.fdr)} · ${a.runs} runs` },
-      { label: "Negative control (per 1,000)", value: `study ${nc.study.per1000?.toFixed(1) ?? "—"} · crypto ${nc.control.per1000?.toFixed(1) ?? "—"} · Fisher p ${fmtP(nc.fisherP)}` },
-      { label: "Control category", value: control ? `${control.markets.toLocaleString()} crypto price markets` : "—" },
+    bulleted: true,
+    sections: [
+      { heading: "How it Works", body: howItWorks },
+      { heading: "Key Findings", body: findings },
+      { heading: "Market By Market Analysis", body: markets },
+      { heading: "Limitations", body: limitations },
     ],
-    limits: [
-      "One-time insiders with fresh wallets have no record to test.",
-      "One person can split activity across many wallets.",
-      "A flagged record is consistent with skill, speed, or inside information. The tool cannot tell which.",
-      "Results describe the library built for this project: resolved markets with at least $10k volume over six months.",
-    ],
+    technical: [],
+    limits: [],
   };
 }

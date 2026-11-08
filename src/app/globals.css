@@ -5622,3 +5622,19 @@ select {
 .date-range > div {
   min-width: 0;
 }
+
+/* Bulleted report sections (Method page summary). */
+.plain-report-bullets {
+  margin: 0;
+  padding-left: 20px;
+}
+.plain-report-bullets li {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+  margin-bottom: 8px;
+  max-width: 78ch;
+}
+.plain-report-bullets li::marker {
+  color: var(--muted);
+}
