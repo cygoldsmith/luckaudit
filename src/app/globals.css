@@ -5497,3 +5497,21 @@ select {
 .records-table .evidence-link {
   white-space: nowrap;
 }
+
+/* Method page */
+.method-advanced {
+  max-width: 820px;
+  margin: 8px auto 0;
+  text-align: center;
+}
+.method-advanced-body {
+  text-align: left;
+  max-width: var(--column);
+  margin: 24px auto 0;
+}
+.plain-report section p + p {
+  margin-top: 6px;
+}
+.method-advanced-body .analysis-grid {
+  grid-template-columns: minmax(0, 1fr);
+}

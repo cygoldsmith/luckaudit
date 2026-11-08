@@ -37,7 +37,7 @@ export default function ValidationPage() {
     return () => c.abort();
   }, [refresh]);
   return (
-    <AppFrame active="validation">
+    <AppFrame active="method">
       <main>
         <div className="page-heading">
           <div>
@@ -320,7 +320,7 @@ export default function ValidationPage() {
                 <Info size={15} />
                 The nine settings were fixed before any real-market run. Measured
                 false-alarm rates appear on the{" "}
-                <a href="/integrity">Integrity search method check</a> once the
+                <a href="/method">Method page</a> once the
                 library is built.
               </div>
             </section>

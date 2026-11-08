@@ -915,7 +915,7 @@ export async function integrityReport(condition: string) {
     participation: part,
     population: {
       markets: pop.records,
-      wallets: pop.index.size,
+      wallets: check?.population.wallets ?? pop.index.size,
       tested: pop.result.tested,
       m: pop.result.family1.m,
       cutoff: pop.result.family1.cutoff,
@@ -1046,4 +1046,37 @@ export async function recordLibraryFailures(failures: Record<string, string>) {
   if (!index) return;
   Object.assign(index.failed, failures);
   await writeJson(indexFile(), index);
+}
+
+/* ------------------------------------------------- library-wide summary */
+
+/** Per-category verdict counts across the whole library, for the Method page. */
+export async function librarySummary() {
+  const pop = await walletPopulation();
+  const categories = SETTINGS.library.categories.map((c) => {
+    const ps = [...categoryPValues(pop, c.id).values()],
+      bh = benjaminiHochberg(ps),
+      markets = [...pop.markets.values()].filter((m) => m.category === c.id).length,
+      rate = pop.categoryRates.byCategory[c.id];
+    return {
+      id: c.id,
+      label: c.label,
+      markets,
+      testable: ps.length,
+      elevatedAlone: ps.filter((p) => p <= SETTINGS.alpha).length,
+      elevatedCorrected: bh.k,
+      flaggedRate: rate && rate.tested ? rate.flagged / rate.tested : null,
+    };
+  });
+  const tiers = { 1: 0, 2: 0, 3: 0 } as Record<1 | 2 | 3, number>;
+  for (const w of pop.result.wallets.values()) if (w.tier) tiers[w.tier as 1 | 2 | 3]++;
+  // The snapshot keeps bets only for flagged wallets; the full count lives in the method check.
+  const check = await methodCheck();
+  return {
+    markets: pop.records,
+    wallets: check.population.wallets,
+    tested: pop.result.tested,
+    tiers,
+    categories,
+  };
 }

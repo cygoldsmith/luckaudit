@@ -313,7 +313,7 @@ export default function MarketInvestigation({
                 records unlikely under market odds, consistent with skill,
                 speed, or information.
               </span>
-              <Link href="/validation">
+              <Link href="/method">
                 Validation
                 <ArrowUpRight size={13} />
               </Link>
@@ -861,7 +861,7 @@ export default function MarketInvestigation({
               <span>
                 Condition {shortAddress(condition)} · Observed records only
               </span>
-              <Link href="/validation">
+              <Link href="/method">
                 How reliable are these results?
                 <ArrowUpRight size={12} />
               </Link>

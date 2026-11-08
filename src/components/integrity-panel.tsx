@@ -94,7 +94,7 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
         <div className="inline-notice warning">
           <Info size={15} />
           You have checked {searches} markets one at a time this session. Each is its own test;{" "}
-          <Link href="/integrity">search several markets together</Link> for a corrected answer.
+          <Link href="/compare">compare several markets together</Link> for a corrected answer.
         </div>
       ) : null}
 

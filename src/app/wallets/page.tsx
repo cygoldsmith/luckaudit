@@ -115,7 +115,7 @@ export default function WalletLookup() {
           <p className="panel-footnote">
             <Info size={12} /> The assessment uses the wallet&apos;s resolved bets: Test 1 (wins vs. calibrated odds),
             Test 2 (entries before price jumps) and leave-one-event-out, against {""}
-            <Link href="/integrity">the library population</Link>. Statistical anomaly under market odds; consistent with
+            <Link href="/method">the library population</Link>. Statistical anomaly under market odds; consistent with
             skill, speed, or information. Not an accusation.
           </p>
         </section>

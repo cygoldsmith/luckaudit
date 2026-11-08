@@ -12,7 +12,7 @@ export default function PlainReportView({ report, generatedAt }: { report: Plain
     <article className={`panel plain-report tone-${report.tone}`}>
       <header className="plain-report-head">
         <div>
-          <div className="eyebrow">EVIDENCE REPORT</div>
+          <div className="eyebrow">{(report.eyebrow ?? "Evidence report").toUpperCase()}</div>
           <h2>{report.title}</h2>
           <p className="plain-report-verdict">{report.verdict}</p>
         </div>

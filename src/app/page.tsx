@@ -327,7 +327,7 @@ export default function MarketExplorer() {
               audited wallets. An anomaly screen, not an accusation.
             </p>
           </div>
-          <Link href="/integrity">
+          <Link href="/method">
             How reliable is it
             <ArrowUpRight size={14} />
           </Link>

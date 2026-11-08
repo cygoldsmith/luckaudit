@@ -6,13 +6,13 @@ import { ArrowUpRight, Search } from "lucide-react";
 import { Logo } from "./visuals";
 import { parseWalletQuery } from "@/lib/wallet-lookup";
 
-export type Section = "markets" | "integrity" | "wallets" | "validation";
+export type Section = "markets" | "compare" | "wallets" | "method";
 
 const NAV: { id: Section; href: string; label: string }[] = [
   { id: "markets", href: "/", label: "Markets" },
-  { id: "integrity", href: "/integrity", label: "Integrity search" },
+  { id: "compare", href: "/compare", label: "Compare markets" },
   { id: "wallets", href: "/wallets", label: "Wallet lookup" },
-  { id: "validation", href: "/validation", label: "Validation" },
+  { id: "method", href: "/method", label: "Method" },
 ];
 
 /** Event the market explorer listens for when a search is made from the header. */
