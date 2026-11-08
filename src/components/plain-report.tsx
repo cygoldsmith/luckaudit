@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, LoaderCircle, Printer } from "lucide-react";
+import { ArrowUpRight, LoaderCircle } from "lucide-react";
 import { requestJson } from "@/lib/client";
 import { marketPlainReport, type PlainReport } from "@/lib/plain-report";
 import type { IntegrityReport } from "@/lib/integrity/data";
 
-/** Plain-English evidence report with collapsible statistics and print-to-PDF. */
+/** Plain-English evidence report with collapsible statistics. */
 export default function PlainReportView({ report, generatedAt }: { report: PlainReport; generatedAt?: string }) {
   return (
     <article className={`panel plain-report tone-${report.tone}`}>
@@ -16,9 +16,6 @@ export default function PlainReportView({ report, generatedAt }: { report: Plain
           <h2>{report.title}</h2>
           <p className="plain-report-verdict">{report.verdict}</p>
         </div>
-        <button className="outline-button no-print" onClick={() => window.print()}>
-          <Printer size={15} /> Print / save as PDF
-        </button>
       </header>
 
       {report.sections.map((s) => (

@@ -5097,25 +5097,6 @@ main {
     grid-template-columns: 1fr;
   }
 }
-@media print {
-  .site-header, .investigation-tabs, .breadcrumbs, .market-scope-banner, .source-bar, .page-heading, .heading-actions,
-  .inline-notice, .page-footer, .no-print, nextjs-portal {
-    display: none !important;
-  }
-  body, .site, main {
-    background: #fff !important;
-  }
-  .plain-report {
-    max-width: none;
-    border: 0;
-    box-shadow: none;
-    padding: 0;
-  }
-  .plain-report-technical[open] dl, .plain-report-technical dl {
-    display: grid;
-  }
-}
-
 /* ================================================================
    Design pass (apple-design skill, Polymarket palette).
    Hierarchy from size + weight + leading, nothing smaller than 12px,
