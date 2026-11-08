@@ -45,7 +45,7 @@ This decision depends on the data format only, not on any result.
 
 These are the method's own assumptions, not bugs. They should be stated in the demo.
 
-- The wallet pre-filter (drop if ∏ fair > 0.05/m) loses power relative to plain BH. It does not inflate the false discovery rate. See `docs/statistical-spec-review.md` §3.
+- The wallet pre-filter (drop if ∏ fair > 0.05/m) loses power relative to plain BH. It does not inflate the false discovery rate.
 - BH assumes valid, at most positively dependent p-values. Related markets in one category can share news, and the random-time placebo is the empirical check on this.
 - Library calibration and wallet records reuse the same resolved bets. Excluding the searched event limits but does not remove that overlap.
 

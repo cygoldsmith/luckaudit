@@ -9,8 +9,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "start": "next start --hostname 0.0.0.0",
     "snapshots": "node scripts/capture-snapshots.mjs",
-    "library": "node --max-old-space-size=2048 --import tsx scripts/build-library.mts",
-    "library:server": "node scripts/build-library.mjs"
+    "library": "node --max-old-space-size=2048 --import tsx scripts/build-library.mts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
