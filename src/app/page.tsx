@@ -4,8 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  ArrowUpRight,
-  Check,
   ChevronDown,
   Clock3,
   ExternalLink,
@@ -317,21 +315,6 @@ export default function MarketExplorer() {
             ) : null}
           </>
         )}
-        <section className="market-method-note">
-          <Check size={17} />
-          <div>
-            <strong>Who is really trading this market?</strong>
-            <p>
-              Open any market to see whether its biggest traders have records
-              elsewhere that luck can&apos;t explain, measured against 85,000
-              audited wallets. An anomaly screen, not an accusation.
-            </p>
-          </div>
-          <Link href="/method">
-            How reliable is it
-            <ArrowUpRight size={14} />
-          </Link>
-        </section>
         <footer className="page-footer">
           <span>
             Public Polymarket data · Reports written from computed results · No wallet connection
