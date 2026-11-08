@@ -13,9 +13,22 @@ export function apiError(error: unknown) {
     },
   );
 }
+/**
+ * Reject cross-site POSTs. Compares the browser's Origin with the Host it
+ * actually requested: request.url can report the bind address (0.0.0.0) when
+ * the dev server listens on all interfaces, which would block the app itself.
+ */
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin)
+  if (!origin) return;
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    throw new DataError("Cross-origin requests are not allowed.", 403);
+  }
+  if (host ? originHost !== host : origin !== new URL(request.url).origin)
     throw new DataError("Cross-origin requests are not allowed.", 403);
 }
 export async function readBody(request: Request): Promise<unknown> {

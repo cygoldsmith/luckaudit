@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { gamma } from "../market-data";
-import { DataError, fetchFills } from "../polymarket";
+import { DataError, fetchFills, fetchHolders } from "../polymarket";
 import { numeric, object } from "../market-normalize";
 import type { Trade } from "../domain";
 import {
@@ -947,7 +947,66 @@ function headline(part: ReturnType<typeof participation>, pop: Population) {
 
 /* --------------------------------------------------------- multi-market */
 
-export async function multiReport(input: { conditions?: string[]; category?: CategoryId; from?: string; to?: string }) {
+/**
+ * Open (unresolved) markets in a category, straight from Polymarket. They are
+ * not in the library, so their participants are the current top holders,
+ * valued at today's price.
+ */
+async function openCategoryTargets(category: CategoryId, limit = 20) {
+  const cat = SETTINGS.library.categories.find((c) => c.id === category);
+  if (!cat) throw new DataError("Unknown category.", 400);
+  const found = new Map<string, { meta: IntegrityMarketMeta; prices: [number, number] }>();
+  for (const tag of cat.tagSlugs) {
+    let raw: unknown;
+    try {
+      raw = await gamma("events", { tag_slug: tag, active: "true", closed: "false", order: "volume24hr", ascending: "false", limit: "50" });
+    } catch {
+      continue;
+    }
+    for (const e of Array.isArray(raw) ? raw : [])
+      for (const rm of list(object(e).markets)) {
+        const meta = metaFromGamma(rm, e);
+        if (!meta || object(rm).closed === true || found.has(meta.condition) || !meetsVolumeFloor(meta.volumeUsd)) continue;
+        const p = list(object(rm).outcomePrices).map((x) => numeric(x) ?? 0);
+        found.set(meta.condition, { meta, prices: [p[0] ?? 0, p[1] ?? 0] });
+      }
+  }
+  const picked = [...found.values()].sort((a, b) => (b.meta.volumeUsd ?? 0) - (a.meta.volumeUsd ?? 0)).slice(0, limit);
+  const notTestable = marketTest(null, [], { resolved: false, yesWon: null, cutoff: null });
+  const out: { condition: string; title: string; event: string; category: CategoryId | null; test: MarketTest; people: { wallet: string; usd: number }[]; total: number; examined?: number }[] = [];
+  for (let i = 0; i < picked.length; i += 4) {
+    const batch = await Promise.all(
+      picked.slice(i, i + 4).map(async ({ meta, prices }) => {
+        let holders: Awaited<ReturnType<typeof fetchHolders>> = [];
+        try {
+          holders = await fetchHolders(meta.condition);
+        } catch {
+          return null;
+        }
+        const byWallet = new Map<string, number>();
+        for (const h of holders) {
+          const w = h.proxy_wallet.toLowerCase();
+          byWallet.set(w, (byWallet.get(w) ?? 0) + h.amount * (prices[h.outcome_index] ?? 0));
+        }
+        const people = [...byWallet].map(([wallet, usd]) => ({ wallet, usd })).sort((a, b) => b.usd - a.usd);
+        return {
+          condition: meta.condition,
+          title: meta.title,
+          event: meta.event,
+          category,
+          test: notTestable,
+          people,
+          total: people.reduce((t, p) => t + p.usd, 0),
+          examined: people.length,
+        };
+      }),
+    );
+    for (const b of batch) if (b && b.people.length) out.push(b);
+  }
+  return out;
+}
+
+export async function multiReport(input: { conditions?: string[]; category?: CategoryId; state?: "open" | "closed"; from?: string; to?: string }) {
   const pop = await walletPopulation(),
     library = [...pop.markets.values()];
   type Target = { condition: string; title: string; event: string; category: CategoryId | null; test: MarketTest; people: { wallet: string; usd: number }[]; total: number; examined?: number };
@@ -963,6 +1022,8 @@ export async function multiReport(input: { conditions?: string[]; category?: Cat
         people = participants(m.allSides);
       targets.push({ condition: c, title: m.meta.title, event: m.meta.event, category: m.meta.category, test: analyze(m).test, people: people.wallets, total: people.total });
     }
+  } else if (input.category && input.state === "open") {
+    targets = await openCategoryTargets(input.category);
   } else if (input.category) {
     const from = input.from ? Date.parse(input.from) / 1000 : -Infinity,
       to = input.to ? Date.parse(input.to) / 1000 + 86400 : Infinity;

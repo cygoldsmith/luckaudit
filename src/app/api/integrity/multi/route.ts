@@ -11,6 +11,7 @@ export async function POST(request: Request) {
       .object({
         conditions: z.array(condition).min(1).max(25).optional(),
         category: z.enum(["control", "awards", "announcements", "politics"]).optional(),
+        state: z.enum(["open", "closed"]).optional(),
         from: z.string().date().optional(),
         to: z.string().date().optional(),
       })

@@ -21,6 +21,7 @@ export function MultiSearch() {
   const [mode, setMode] = useState<"paste" | "category">("paste"),
     [text, setText] = useState(""),
     [category, setCategory] = useState<string>("politics"),
+    [state, setState] = useState<"open" | "closed">("closed"),
     [from, setFrom] = useState(""),
     [to, setTo] = useState(""),
     [busy, setBusy] = useState(false),
@@ -33,7 +34,9 @@ export function MultiSearch() {
     try {
       const conditions = [...new Set(text.match(/0x[\da-fA-F]{64}/g) ?? [])];
       if (mode === "paste" && !conditions.length) throw new Error("Paste at least one market condition ID (0x…64 hex).");
-      const body = mode === "paste" ? { conditions } : { category, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+      const body = mode === "paste" ? { conditions } : state === "open"
+          ? { category, state }
+          : { category, state, ...(from ? { from } : {}), ...(to ? { to } : {}) };
       setResult(
         await requestJson<Multi>("/api/integrity/multi", {
           method: "POST",
@@ -66,7 +69,7 @@ export function MultiSearch() {
               Paste markets
             </button>
             <button className={mode === "category" ? "selected" : ""} onClick={() => setMode("category")}>
-              Category from library
+              Whole category
             </button>
           </div>
           {mode === "paste" ? (
@@ -88,16 +91,36 @@ export function MultiSearch() {
                   ))}
                 </select>
               </label>
-              <label>
-                Resolved from
-                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-              </label>
-              <label>
-                to
-                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-              </label>
+              <div className="segmented" role="group" aria-label="Market status">
+                <button type="button" className={state === "open" ? "selected" : ""} onClick={() => setState("open")}>
+                  Open
+                </button>
+                <button type="button" className={state === "closed" ? "selected" : ""} onClick={() => setState("closed")}>
+                  Closed
+                </button>
+              </div>
+              {state === "closed" ? (
+                <>
+                  <label>
+                    Resolved from
+                    <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                  </label>
+                  <label>
+                    to
+                    <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                  </label>
+                </>
+              ) : null}
             </div>
           )}
+          {mode === "category" ? (
+            <p className="panel-footnote">
+              <Info size={12} />{" "}
+              {state === "open"
+                ? "Open markets: the 20 most-traded live markets in this category, judged by their current top holders."
+                : "Closed markets: every resolved market in the library for this category, judged by everyone who traded."}
+            </p>
+          ) : null}
           <button className="primary-button" disabled={busy} onClick={run}>
             {busy ? <LoaderCircle className="spin" size={15} /> : <Search size={15} />}
             {busy ? "Checking participants…" : "Run search"}

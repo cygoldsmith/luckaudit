@@ -512,3 +512,15 @@ export async function fetchFills(
     maxPages,
   );
 }
+
+/** Current top holders of each outcome token (one fast call per market). */
+export async function fetchHolders(condition: string, limit = 100) {
+  if (!/^0x[\da-f]{64}$/i.test(condition)) throw new DataError("Invalid market condition ID.", 400);
+  const holder = z.object({ proxy_wallet: z.string(), amount: z.number().finite(), outcome_index: z.number() });
+  const page = await remote(
+    "holders",
+    { condition, limit: String(limit) },
+    z.object({ data: z.array(z.object({ token_id: z.string(), holders: z.array(holder) })) }),
+  );
+  return page.data.flatMap((t) => t.holders);
+}
