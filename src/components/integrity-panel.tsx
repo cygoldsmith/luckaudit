@@ -83,7 +83,10 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
         Number(!!b.card?.tested1) - Number(!!a.card?.tested1) ||
         b.usd - a.usd,
     ),
-    visible = showAll ? rows : rows.filter((r) => r.card).slice(0, 40);
+    // Flagged and notable wallets first, then a handful of others; the rest on demand.
+    visible = showAll
+      ? rows
+      : rows.filter((r) => r.flagged || r.weak).concat(rows.filter((r) => r.card?.tested1 && !r.flagged && !r.weak).slice(0, 8));
 
   return (
     <div className="integrity">
@@ -102,10 +105,11 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
           <p>{data.headline}</p>
         </div>
         <dl className="integrity-facts">
-          <div>
-            <dt>Flagged / tested participants</dt>
+          <div className="fact-hero">
+            <dt>Wallets with anomalous records</dt>
             <dd>
-              {part.flagged} / {part.tested}
+              {part.flagged}
+              <span> of {part.tested} tested</span>
             </dd>
           </div>
           <div>
@@ -143,7 +147,7 @@ export default function IntegrityPanel({ condition }: { condition: string }) {
             </p>
           </div>
           <button className="text-button" onClick={() => setShowAll((s) => !s)}>
-            {showAll ? "Only wallets with records" : `Show all ${part.examined}`}
+            {showAll ? "Show fewer" : `Show all ${part.examined}`}
           </button>
         </div>
         <div className="table-scroll">

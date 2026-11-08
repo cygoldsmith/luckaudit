@@ -5115,3 +5115,385 @@ main {
     display: grid;
   }
 }
+
+/* ================================================================
+   Design pass (apple-design skill, Polymarket palette).
+   Hierarchy from size + weight + leading, nothing smaller than 12px,
+   one centered reading column, calm chrome, materials with depth,
+   and restrained, critically damped motion.
+   ================================================================ */
+:root {
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-2: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px -16px rgba(16, 24, 40, 0.16);
+  --column: 1200px;
+}
+body {
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.003em;
+}
+
+/* One centered reading column, like Polymarket. */
+main,
+.investigation-main,
+.site-header-inner {
+  max-width: var(--column);
+}
+main,
+.investigation-main {
+  padding: 32px 24px 48px;
+}
+
+/* ---- Type scale: legible minimums, size-specific tracking ---- */
+h1 {
+  font-size: clamp(26px, 2.6vw, 34px);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+.panel h2 {
+  font-size: 18px;
+  letter-spacing: -0.015em;
+}
+.eyebrow,
+.nav-caption {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.cell-subline,
+.metric > small,
+.panel-footnote,
+.page-heading p,
+.panel-heading p,
+.breadcrumbs,
+.source-bar,
+.chart-empty,
+.market-card-meta,
+.records-table th {
+  font-size: 13px;
+}
+.cell-subline {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.panel-heading p,
+.page-heading p {
+  line-height: 1.55;
+  max-width: 72ch;
+}
+.metric > span,
+.integrity-facts dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.metric > strong {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+/* ---- Surfaces: materials with depth, larger = thicker ---- */
+.panel,
+.metric,
+.market-card,
+.dialog {
+  border-radius: var(--radius);
+  border-color: var(--line);
+  box-shadow: var(--shadow-1);
+}
+.panel {
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.integrity,
+.analysis-grid {
+  gap: 20px;
+}
+
+/* ---- Calm chrome: provenance and notes as quiet captions ---- */
+.source-bar {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 4px 0 16px;
+  color: var(--muted);
+  gap: 10px;
+}
+.source-pill {
+  background: var(--surface-2);
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.market-scope-banner {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.market-scope-banner strong {
+  color: var(--text-2);
+}
+.inline-notice {
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  padding: 10px 14px;
+}
+.inline-notice.warning {
+  background: #fff8ec;
+  border: 1px solid #f3e2c2;
+  color: #7a5a17;
+}
+
+/* ---- Tabs: larger targets, clear current state ---- */
+.investigation-tabs {
+  gap: 28px;
+  margin: 20px 0 24px;
+}
+.investigation-tabs > button {
+  font-size: 15px;
+  padding-bottom: 14px;
+}
+
+/* ---- Buttons ---- */
+.primary-button,
+.outline-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  gap: 8px;
+}
+.primary-button {
+  box-shadow: 0 1px 2px rgba(22, 82, 240, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* ---- Market header ---- */
+.pm-market-title h1 {
+  font-size: clamp(24px, 2.4vw, 32px);
+}
+.pm-chance strong {
+  font-size: 34px;
+}
+
+/* ---- Verdict hero ---- */
+.integrity-verdict {
+  padding: 28px 28px 28px 32px;
+  gap: 32px;
+  align-items: center;
+  border-left-width: 5px;
+  box-shadow: var(--shadow-2);
+}
+.integrity-verdict h2 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 6px 0 10px;
+}
+.integrity-verdict p {
+  font-size: 15px;
+  line-height: 1.6;
+}
+.integrity-facts {
+  gap: 18px 24px;
+}
+.integrity-facts dd {
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+.integrity-facts .fact-hero {
+  grid-column: 1 / -1;
+}
+.integrity-facts .fact-hero dd {
+  font-size: 44px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+}
+.integrity-facts .fact-hero dd span {
+  font-size: 17px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.integrity-verdict.verdict-elevated .fact-hero dd {
+  color: #b4572e;
+}
+.integrity-verdict.verdict-typical .fact-hero dd {
+  color: var(--yes);
+}
+
+/* ---- Tables: room to breathe, gentle hover ---- */
+.records-table th {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  background: var(--surface-2);
+}
+.records-table td {
+  font-size: 14px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  vertical-align: top;
+}
+.records-table tbody tr {
+  transition: background-color 150ms var(--ease-spring);
+}
+.records-table tbody tr:hover td {
+  background: #f8f9fb;
+}
+.records-table tr.row-flagged td {
+  background: #fff8f2;
+}
+.integrity-label {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+/* ---- Home ---- */
+.section-title h2 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.market-card {
+  padding: 16px;
+}
+.pm-card-head .market-question {
+  font-size: 15px;
+}
+.pm-card .outcome-preview > div {
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  padding: 10px;
+}
+.pm-card-foot {
+  font-size: 13px;
+}
+.load-more {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+}
+.market-method-note {
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  padding: 20px 24px;
+}
+.market-method-note strong {
+  font-size: 16px;
+}
+.market-method-note p {
+  font-size: 14px;
+  color: var(--text-2);
+}
+.page-footer {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: var(--column);
+  margin: 0 auto;
+}
+
+/* ---- Motion: content rises in once, calmly; nothing loops ---- */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.panel,
+.metric,
+.market-card,
+.plain-report {
+  animation: rise-in var(--settle-duration) var(--ease-spring) both;
+}
+.market-grid > .market-card:nth-child(2) { animation-delay: 30ms; }
+.market-grid > .market-card:nth-child(3) { animation-delay: 60ms; }
+.market-grid > .market-card:nth-child(4) { animation-delay: 90ms; }
+.market-grid > .market-card:nth-child(n + 5) { animation-delay: 120ms; }
+
+@media (max-width: 760px) {
+  main,
+  .investigation-main {
+    padding: 20px 16px 40px;
+  }
+  .panel {
+    padding: 18px;
+  }
+  .integrity-verdict {
+    padding: 20px;
+  }
+  .integrity-facts .fact-hero dd {
+    font-size: 36px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .metric,
+  .market-card,
+  .plain-report {
+    animation: none !important;
+  }
+}
+
+/* Design pass: remaining small text */
+.records-table .evidence-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.text-button,
+.market-method-note a,
+.page-footer a {
+  font-size: 14px;
+}
+.catalogue-note {
+  font-size: 13px;
+  color: var(--muted);
+}
+.period-control > button,
+.segmented button {
+  font-size: 13px;
+  padding: 7px 14px;
+}
+select {
+  font-size: 13px;
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+}
+.market-rules summary {
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.market-rules[open] summary {
+  margin-bottom: 12px;
+}
+.market-rules li {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.pm-gauge small {
+  font-size: 11px;
+}
+.breadcrumbs a,
+.breadcrumbs span {
+  font-size: 13px;
+}
+.records-table .evidence-link {
+  white-space: nowrap;
+}

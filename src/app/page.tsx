@@ -320,21 +320,21 @@ export default function MarketExplorer() {
         <section className="market-method-note">
           <Check size={17} />
           <div>
-            <strong>An anomaly screen, not a fairness certificate.</strong>
+            <strong>Who is really trading this market?</strong>
             <p>
-              Open a resolved market for its integrity test: was buying in the
-              6 hours before the big move unusually one-sided? Every verdict
-              shows its p-value, comparison count and measured false-alarm rate.
+              Open any market to see whether its biggest traders have records
+              elsewhere that luck can&apos;t explain, measured against 85,000
+              audited wallets. An anomaly screen, not an accusation.
             </p>
           </div>
-          <Link href="/validation">
-            See validation
+          <Link href="/integrity">
+            How reliable is it
             <ArrowUpRight size={14} />
           </Link>
         </section>
         <footer className="page-footer">
           <span>
-            Public data · Local AI explanations · No wallet connection
+            Public Polymarket data · Reports written from computed results · No wallet connection
           </span>
           <a
             href="https://docs.polymarket.com/market-data/overview"
