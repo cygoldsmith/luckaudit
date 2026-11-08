@@ -307,12 +307,6 @@ export default function MarketExplorer() {
                 <ChevronDown size={15} />
               </button>
             ) : null}
-            {catalogue.hasMore ? (
-              <p className="catalogue-note">
-                Additional matches may exist beyond these discovery results.
-                Refine the topic or paste a specific event link.
-              </p>
-            ) : null}
           </>
         )}
         <footer className="page-footer">
